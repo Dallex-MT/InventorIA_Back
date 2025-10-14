@@ -1,10 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import { testConnection } from './utils/database';
+import { httpLogger, logAppEvent } from './utils/logger';
 import authRoutes from './routes/auth';
 import rolRoutes from './routes/rolRoutes';
 import categoriaRoutes from './routes/categoriaRoutes';
@@ -12,6 +12,14 @@ import productoRoutes from './routes/productoRoutes';
 import tipoMovimientoRoutes from './routes/tipoMovimientoRoutes';
 import facturaInternaRoutes from './routes/facturaInternaRoutes';
 import detalleFacturaRoutes from './routes/detalleFacturaRoutes';
+
+// Asegurarse de que existe el directorio de logs
+import fs from 'fs';
+import path from 'path';
+const logsDir = path.join(__dirname, '..', 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir);
+}
 
 dotenv.config();
 
@@ -23,27 +31,16 @@ app.use(cors({
   origin: true, // Allow all origins in development, configure specific origins in production
   credentials: true // Allow cookies to be sent cross-site
 }));
-app.use(morgan('combined'));
 app.use(cookieParser());
 
-// Middleware de depuración para loggear todas las peticiones
-app.use((req, _res, next) => {
-  const logMessage = `📥 ${req.method} ${req.url} - ${new Date().toISOString()}`;
-  console.log(logMessage);
-  console.log(`📋 Request headers: ${JSON.stringify(req.headers)}`);
-  
-  // Also write to a file for debugging
-  const fs = require('fs');
-  fs.appendFileSync('debug.log', logMessage + '\n');
-  
-  next();
-});
+// Implementar el nuevo sistema de logging
+app.use(httpLogger);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/health', (_req, res) => {
-    console.log('🎯 HEALTH ROUTE HIT!');
+    logAppEvent('info', '🎯 Health check endpoint accessed');
     res.json({
         success: true,
         message: 'Servidor funcionando correctamente',
@@ -52,36 +49,26 @@ app.get('/health', (_req, res) => {
 });
 
 app.get('/test', (_req, res) => {
-    console.log('🎯 TEST ROUTE HIT!');
+    logAppEvent('info', '🎯 Test endpoint accessed');
     res.json({
         success: true,
         message: 'Test route working'
     });
 });
 
-console.log('📋 Registering auth routes...');
+// Registro de rutas
+logAppEvent('info', '📋 Registering routes...');
 app.use('/api/auth', authRoutes);
-
-console.log('📋 Registering role routes...');
 app.use('/api', rolRoutes);
-
-console.log('📋 Registering category routes...');
 app.use('/api', categoriaRoutes);
-
-console.log('📋 Registering product routes...');
 app.use('/api', productoRoutes);
-
-console.log('📋 Registering tipo movimiento routes...');
 app.use('/api', tipoMovimientoRoutes);
-
-console.log('📋 Registering factura interna routes...');
 app.use('/api', facturaInternaRoutes);
-
-console.log('📋 Registering detalle factura routes...');
 app.use('/api', detalleFacturaRoutes);
 
+// Manejador de rutas no encontradas
 app.use((req, res) => {
-  console.log(`❌ 404 ERROR: ${req.method} ${req.url} - No route matched`);
+  logAppEvent('warn', `❌ Route not found: ${req.method} ${req.url}`);
   
   res.status(404).json({
     success: false,
@@ -89,8 +76,12 @@ app.use((req, res) => {
   });
 });
 
+// Manejador de errores global
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Error no manejado:', err);
+  logAppEvent('error', 'Error no manejado', {
+    error: err.message,
+    stack: process.env['NODE_ENV'] === 'development' ? err.stack : undefined
+  });
   
   res.status(500).json({
     success: false,
@@ -101,19 +92,23 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 
 const startServer = async () => {
   try {
-    console.log('🚀 Iniciando servidor...');
+    logAppEvent('info', '🚀 Iniciando servidor...');
     
-    console.log('🔍 Probando conexión a base de datos...');
+    logAppEvent('info', '🔍 Probando conexión a base de datos...');
     await testConnection();
-    console.log('✅ Conexión a base de datos exitosa');
+    logAppEvent('info', '✅ Conexión a base de datos exitosa');
     
     app.listen(PORT, () => {
-      console.log(`🌐 Servidor corriendo en http://localhost:${PORT}`);
-      console.log(`📊 Entorno: ${process.env['NODE_ENV'] || 'development'}`);
-      console.log(`🔑 JWT Secret: ${process.env['JWT_SECRET'] ? 'Configurado' : 'No configurado'}`);
+      logAppEvent('info', '🌐 Servidor iniciado', {
+        port: PORT,
+        environment: process.env['NODE_ENV'] || 'development',
+        jwtConfigured: !!process.env['JWT_SECRET']
+      });
     });
   } catch (error) {
-    console.error('❌ Error al iniciar el servidor:', error);
+    logAppEvent('error', '❌ Error al iniciar el servidor', {
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
     process.exit(1);
   }
 };

@@ -19,6 +19,10 @@ build/
 # Logs
 logs/
 *.log
+debug.log
+app-*.log
+access-*.log
+error-*.log
 
 # Runtime data
 pids/
