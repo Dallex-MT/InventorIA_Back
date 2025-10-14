@@ -8,24 +8,6 @@ export function sanitizeInput(input: string): string {
     .replace(/\\/g, '');
 }
 
-export function validateCedula(cedula: string): { isValid: boolean; error?: string } {
-  if (!cedula || cedula.trim().length === 0) {
-    return { isValid: false, error: 'La cédula es requerida' };
-  }
-  
-  const sanitizedCedula = sanitizeInput(cedula);
-  
-  if (sanitizedCedula.length < 5 || sanitizedCedula.length > 20) {
-    return { isValid: false, error: 'La cédula debe tener entre 5 y 20 caracteres' };
-  }
-  
-  if (!/^[a-zA-Z0-9-]+$/.test(sanitizedCedula)) {
-    return { isValid: false, error: 'La cédula solo puede contener letras, números y guiones' };
-  }
-  
-  return { isValid: true };
-}
-
 export function validateEmail(email: string): { isValid: boolean; error?: string } {
   if (!email || email.trim().length === 0) {
     return { isValid: false, error: 'El correo electrónico es requerido' };

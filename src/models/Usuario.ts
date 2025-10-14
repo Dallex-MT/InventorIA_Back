@@ -23,6 +23,7 @@ export interface UsuarioSeguro {
 }
 
 export interface UsuarioRegistroDTO {
+  cedula: string;
   nombre_usuario: string;
   correo: string;
   password: string;

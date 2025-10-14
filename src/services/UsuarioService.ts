@@ -57,23 +57,21 @@ export class UsuarioService {
 
   async create(usuarioData: UsuarioRegistroDTO): Promise<Usuario> {
     try {
-      const { nombre_usuario, correo, password, rol_id } = usuarioData;
+      const { cedula, nombre_usuario, correo, password, rol_id } = usuarioData;
       
       const sanitizedNombre = sanitizeInput(nombre_usuario);
       const sanitizedCorreo = sanitizeInput(correo);
       
       const passwordHash = await hashPassword(password);
       
-      // Generate a default cedula based on timestamp to satisfy database constraint
-      const defaultCedula = `TEMP${Date.now()}`;
       
       const query = `
-        INSERT INTO usuarios (cedula, nombre_usuario, correo, password_hash, rol_id, activo, fecha_creacion, fecha_actualizacion)
-        VALUES (?, ?, ?, ?, ?, true, NOW(), NOW())
+        INSERT INTO usuarios (cedula, nombre_usuario, correo, password_hash, rol_id, activo)
+        VALUES (?, ?, ?, ?, ?, true)
       `;
       
       const result = await executeQuery(query, [
-        defaultCedula,
+        cedula,
         sanitizedNombre,
         sanitizedCorreo,
         passwordHash,
@@ -138,6 +136,20 @@ export class UsuarioService {
   toSafeUser(usuario: Usuario): UsuarioSeguro {
     const { password_hash, ...safeUser } = usuario;
     return safeUser;
+  }
+
+  async checkIfCedulaExists(cedula: string): Promise<{ exists: boolean; field: string }> {
+    try {
+      const userByCedula = await this.findByCedula(cedula);
+      if (userByCedula) {
+        return { exists: true, field: 'cedula' };
+      }
+      
+      return { exists: false, field: '' };
+    } catch (error) {
+      console.error('Error al verificar existencia de usuario:', error);
+      throw new Error('Error al verificar usuario');
+    }
   }
 
   async checkIfUserExists(correo: string): Promise<{ exists: boolean; field: string }> {

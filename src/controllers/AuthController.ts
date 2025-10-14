@@ -20,9 +20,9 @@ export class AuthController {
 
   async register(req: Request, res: Response): Promise<void> {
     try {
-      const { nombre_usuario, correo, password, rol_id } = req.body;
+      const { cedula, nombre_usuario, correo, password, rol_id } = req.body;
 
-      if (!nombre_usuario || !correo || !password || !rol_id) {
+      if (!cedula || !nombre_usuario || !correo || !password || !rol_id) {
         const response: AuthResponse = {
           success: false,
           message: 'Todos los campos son requeridos'
@@ -82,6 +82,7 @@ export class AuthController {
       }
 
       const usuarioData: UsuarioRegistroDTO = {
+        cedula,
         nombre_usuario,
         correo,
         password,

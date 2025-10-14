@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyToken, extractTokenFromCookie } from '../utils/jwt';
+import { verifyToken, extractTokenFromCookie, extractTokenFromHeader } from '../utils/jwt';
 import { JWTPayload } from '../models/Usuario';
 
 export interface AuthenticatedRequest extends Request {
@@ -8,7 +8,12 @@ export interface AuthenticatedRequest extends Request {
 
 export const authenticateToken = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
   try {
-    const token = extractTokenFromCookie(req);
+    // Try to extract token from cookie first, then from Authorization header
+    let token = extractTokenFromCookie(req);
+    
+    if (!token) {
+      token = extractTokenFromHeader(req.headers.authorization);
+    }
 
     if (!token) {
       res.status(401).json({
@@ -34,7 +39,7 @@ export const authenticateToken = (req: AuthenticatedRequest, res: Response, next
     console.error('Error en autenticación:', error);
     res.status(401).json({
       success: false,
-      message: 'Error en autenticación'
+        message: 'Error en autenticación'
     });
   }
 };

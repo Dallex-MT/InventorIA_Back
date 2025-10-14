@@ -7,6 +7,11 @@ import dotenv from 'dotenv';
 import { testConnection } from './utils/database';
 import authRoutes from './routes/auth';
 import rolRoutes from './routes/rolRoutes';
+import categoriaRoutes from './routes/categoriaRoutes';
+import productoRoutes from './routes/productoRoutes';
+import tipoMovimientoRoutes from './routes/tipoMovimientoRoutes';
+import facturaInternaRoutes from './routes/facturaInternaRoutes';
+import detalleFacturaRoutes from './routes/detalleFacturaRoutes';
 
 dotenv.config();
 
@@ -23,19 +28,22 @@ app.use(cookieParser());
 
 // Middleware de depuración para loggear todas las peticiones
 app.use((req, _res, next) => {
-  console.log(`📥 ${req.method} ${req.url}`);
+  const logMessage = `📥 ${req.method} ${req.url} - ${new Date().toISOString()}`;
+  console.log(logMessage);
+  console.log(`📋 Request headers: ${JSON.stringify(req.headers)}`);
+  
+  // Also write to a file for debugging
+  const fs = require('fs');
+  fs.appendFileSync('debug.log', logMessage + '\n');
+  
   next();
 });
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-console.log('📋 Registering auth routes...');
-app.use('/api/auth', authRoutes);
-console.log('📋 Registering role routes...');
-app.use('/api', rolRoutes);
-
 app.get('/health', (_req, res) => {
+    console.log('🎯 HEALTH ROUTE HIT!');
     res.json({
         success: true,
         message: 'Servidor funcionando correctamente',
@@ -43,7 +51,38 @@ app.get('/health', (_req, res) => {
     });
 });
 
-app.use((_req, res) => {
+app.get('/test', (_req, res) => {
+    console.log('🎯 TEST ROUTE HIT!');
+    res.json({
+        success: true,
+        message: 'Test route working'
+    });
+});
+
+console.log('📋 Registering auth routes...');
+app.use('/api/auth', authRoutes);
+
+console.log('📋 Registering role routes...');
+app.use('/api', rolRoutes);
+
+console.log('📋 Registering category routes...');
+app.use('/api', categoriaRoutes);
+
+console.log('📋 Registering product routes...');
+app.use('/api', productoRoutes);
+
+console.log('📋 Registering tipo movimiento routes...');
+app.use('/api', tipoMovimientoRoutes);
+
+console.log('📋 Registering factura interna routes...');
+app.use('/api', facturaInternaRoutes);
+
+console.log('📋 Registering detalle factura routes...');
+app.use('/api', detalleFacturaRoutes);
+
+app.use((req, res) => {
+  console.log(`❌ 404 ERROR: ${req.method} ${req.url} - No route matched`);
+  
   res.status(404).json({
     success: false,
     message: 'Ruta no encontrada'
