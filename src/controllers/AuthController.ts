@@ -2,14 +2,14 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { UsuarioService } from '../services/UsuarioService';
 import { generateToken, setTokenCookie, clearTokenCookie } from '../utils/jwt';
-import { comparePassword } from '../utils/password';
-import { validatePassword } from '../utils/password';
+import { comparePassword, hashPassword } from '../utils/password';
 import { 
   validateEmail, 
   validateNombreUsuario, 
-  validateRolId 
+  validateRolId,
 } from '../utils/validation';
 import { UsuarioRegistroDTO, AuthResponse, JWTPayload } from '../models/Usuario';
+import { invalidateUserSessions } from '../utils/tokenBlacklist';
 
 export class AuthController {
   private usuarioService: UsuarioService;
@@ -56,16 +56,6 @@ export class AuthController {
         const response: AuthResponse = {
           success: false,
           message: rolValidation.error || 'Rol inválido'
-        };
-        res.status(400).json(response);
-        return;
-      }
-
-      const passwordValidation = validatePassword(password);
-      if (!passwordValidation.isValid) {
-        const response: AuthResponse = {
-          success: false,
-          message: `Contraseña inválida: ${passwordValidation.errors.join(', ')}`
         };
         res.status(400).json(response);
         return;
@@ -264,7 +254,7 @@ export class AuthController {
   async updateProfile(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as AuthenticatedRequest).user;
-      const { nombre_usuario, correo } = req.body;
+      const { estado, nombre_usuario, correo, cedula, userId } = req.body;
 
       if (!user || !user.userId) {
         const response: AuthResponse = {
@@ -275,7 +265,10 @@ export class AuthController {
         return;
       }
 
-      if (!nombre_usuario && !correo) {
+      // Si no se proporciona userId, se asume que se quiere editar el propio perfil
+      const targetUserId = userId ? parseInt(userId) : user.userId;
+
+      if (!nombre_usuario && !correo && !cedula) {
         const response: AuthResponse = {
           success: false,
           message: 'Debe proporcionar al menos un campo para actualizar'
@@ -311,7 +304,16 @@ export class AuthController {
         updateData.correo = correo;
       }
 
-      const updatedUser = await this.usuarioService.update(user.userId, updateData);
+      if (cedula) {
+        // La cédula viene encriptada desde el frontend, no se valida formato
+        updateData.cedula = cedula;
+      }
+
+      if (estado !== undefined) {
+        updateData.activo = estado;
+      }
+
+      const updatedUser = await this.usuarioService.update(user.userId, targetUserId, updateData);
       if (!updatedUser) {
         const response: AuthResponse = {
           success: false,
@@ -323,17 +325,283 @@ export class AuthController {
 
       const safeUser = this.usuarioService.toSafeUser(updatedUser);
 
+      // Mensaje personalizado según quién está siendo modificado
+      let successMessage = 'Perfil actualizado exitosamente';
+      if (user.userId !== targetUserId) {
+        successMessage = `Perfil del usuario ${updatedUser.nombre_usuario} (ID: ${targetUserId}) actualizado exitosamente por el administrador`;
+      } else {
+        successMessage = 'Tu perfil ha sido actualizado exitosamente';
+      }
+
       const response: AuthResponse = {
         success: true,
-        message: 'Perfil actualizado exitosamente',
-        user: safeUser
+        message: successMessage,
+        user: safeUser,
+        metadata: {
+          updatedBy: user.userId,
+          updatedUser: targetUserId,
+          isAdmin: user.userId !== targetUserId
+        }
       };
       res.json(response);
     } catch (error) {
       console.error('Error in updateProfile:', error);
       const response: AuthResponse = {
         success: false,
-        message: 'Error al actualizar el perfil'
+        message: error instanceof Error ? error.message : 'Error al actualizar el perfil'
+      };
+      
+      // Manejar códigos de estado específicos según el tipo de error
+      if (error instanceof Error) {
+        if (error.message.includes('permisos')) {
+          res.status(403).json(response);
+        } else if (error.message.includes('no encontrado')) {
+          res.status(404).json(response);
+        } else {
+          res.status(500).json(response);
+        }
+      } else {
+        res.status(500).json(response);
+      }
+    }
+  }
+
+  async updatePassword(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as AuthenticatedRequest).user;
+      const { oldPassword, newPassword } = req.body;
+
+      if (!user || !user.userId) {
+        const response: AuthResponse = {
+          success: false,
+          message: 'Usuario no autenticado'
+        };
+        res.status(401).json(response);
+        return;
+      }
+
+      if (!oldPassword || !newPassword) {
+        const response: AuthResponse = {
+          success: false,
+          message: 'La contraseña actual y la nueva contraseña son requeridas'
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      // Verificar que la nueva contraseña no sea igual a la actual
+      if (oldPassword === newPassword) {
+        const response: AuthResponse = {
+          success: false,
+          message: 'La nueva contraseña debe ser diferente a la actual'
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      // Obtener el usuario actual con su contraseña hash
+      const currentUser = await this.usuarioService.findById(user.userId);
+      if (!currentUser) {
+        const response: AuthResponse = {
+          success: false,
+          message: 'Usuario no encontrado'
+        };
+        res.status(404).json(response);
+        return;
+      }
+
+      // Verificar que la contraseña actual sea correcta
+      const isCurrentPasswordValid = await comparePassword(oldPassword, currentUser.password_hash);
+      if (!isCurrentPasswordValid) {
+        const response: AuthResponse = {
+          success: false,
+          message: 'La contraseña actual es incorrecta'
+        };
+        res.status(401).json(response);
+        return;
+      }
+
+      // Hash de la nueva contraseña
+      const newPasswordHash = await hashPassword(newPassword);
+
+      // Actualizar la contraseña en la base de datos
+      await this.usuarioService.updatePassword(user.userId, newPasswordHash);
+
+      const response: AuthResponse = {
+        success: true,
+        message: 'Contraseña actualizada exitosamente'
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      console.error('Error al actualizar contraseña:', error);
+      const response: AuthResponse = {
+        success: false,
+        message: 'Error interno del servidor'
+      };
+      res.status(500).json(response);
+    }
+  }
+
+  async deactivateUser(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as AuthenticatedRequest).user;
+      const { userId } = req.params;
+
+      if (!user || !user.userId) {
+        const response: AuthResponse = {
+          success: false,
+          message: 'Usuario no autenticado'
+        };
+        res.status(401).json(response);
+        return;
+      }
+
+      // Validar que el ID de usuario sea válido
+      if (!userId || isNaN(parseInt(userId))) {
+        const response: AuthResponse = {
+          success: false,
+          message: 'ID de usuario inválido'
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      const targetUserId = parseInt(userId);
+
+      // Paso 1: Verificar si el usuario que realiza la solicitud coincide con el ID objetivo
+      if (user.userId === targetUserId) {
+        // El usuario puede desactivar su propia cuenta
+        console.log(`Usuario ${user.userId} está desactivando su propia cuenta`);
+        
+        // **NUEVO**: Gestionar sesiones y tokens cuando el usuario se desactiva a sí mismo
+        try {
+          console.log(`[SESION] Iniciando limpieza de sesiones para usuario ${user.userId}`);
+          
+          // 1. Invalidar todos los tokens del usuario (acceso y refresh)
+          const invalidatedTokens = await invalidateUserSessions(user.userId);
+          console.log(`[SESION] ${invalidatedTokens} tokens invalidados para usuario ${user.userId}`);
+          
+          // 2. Limpiar cookies de tokens en el cliente
+          clearTokenCookie(res);
+          console.log(`[SESION] Cookies de tokens limpiadas para usuario ${user.userId}`);
+          
+          // 3. Registrar evento de auditoría
+          console.log(`[AUDITORIA] Usuario ${user.userId} desactivó su cuenta - sesiones cerradas forzosamente`);
+          
+        } catch (sessionError) {
+          console.error(`[ERROR] Error al limpiar sesiones para usuario ${user.userId}:`, sessionError);
+        }
+      } else {
+        // Paso 2: Si no coincide, verificar si el usuario tiene rol de administrador
+        const requestingUser = await this.usuarioService.findById(user.userId);
+        if (!requestingUser) {
+          const response: AuthResponse = {
+            success: false,
+            message: 'Usuario solicitante no encontrado'
+          };
+          res.status(404).json(response);
+          return;
+        }
+
+        // Verificar rol de administrador de forma segura
+        if (requestingUser.rol_id !== 1) {
+          const response: AuthResponse = {
+            success: false,
+            message: 'No tienes permisos para realizar esta acción'
+          };
+          res.status(403).json(response);
+          return;
+        }
+
+        // El administrador puede desactivar cualquier cuenta
+        console.log(`Administrador ${user.userId} está desactivando la cuenta de usuario ${targetUserId}`);
+      }
+
+      // Realizar la desactivación del usuario
+      const deactivatedUser = await this.usuarioService.softDelete(targetUserId);
+      if (!deactivatedUser) {
+        const response: AuthResponse = {
+          success: false,
+          message: 'Usuario no encontrado'
+        };
+        res.status(404).json(response);
+        return;
+      }
+
+      const safeUser = this.usuarioService.toSafeUser(deactivatedUser);
+
+      const response: AuthResponse = {
+        success: true,
+        message: 'Usuario desactivado exitosamente',
+        user: safeUser
+      };
+      res.json(response);
+    } catch (error) {
+      console.error('Error al desactivar usuario:', error);
+      const response: AuthResponse = {
+        success: false,
+        message: error instanceof Error ? error.message : 'Error al desactivar usuario'
+      };
+      res.status(500).json(response);
+    }
+  }
+
+  async listUsers(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as AuthenticatedRequest).user;
+      const { page = '1', limit = '10', active } = req.query;
+
+      if (!user || !user.userId) {
+        const response: AuthResponse = {
+          success: false,
+          message: 'Usuario no autenticado'
+        };
+        res.status(401).json(response);
+        return;
+      }
+
+      const pageNum = parseInt(page as string) || 1;
+      const limitNum = parseInt(limit as string) || 10;
+      
+      // Validar límites de paginación
+      if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+        const response: AuthResponse = {
+          success: false,
+          message: 'Parámetros de paginación inválidos'
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      let activeFilter: boolean | undefined;
+      if (active !== undefined) {
+        if (active === 'true') {
+          activeFilter = true;
+        } else if (active === 'false') {
+          activeFilter = false;
+        }
+      }
+
+      const result = await this.usuarioService.listUsers(
+        user.userId,
+        pageNum,
+        limitNum,
+        activeFilter
+      );
+
+      const response = {
+        success: true,
+        message: 'Usuarios obtenidos exitosamente',
+        data: result
+      };
+
+      res.json(response);
+    } catch (error) {
+      console.error('Error al listar usuarios:', error);
+      const response: AuthResponse = {
+        success: false,
+        message: error instanceof Error ? error.message : 'Error al listar usuarios'
       };
       res.status(500).json(response);
     }

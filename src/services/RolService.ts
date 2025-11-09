@@ -4,11 +4,54 @@ import { ResultSetHeader, RowDataPacket } from 'mysql2';
 
 export class RolService {
   
-  static async getAllRoles(): Promise<Rol[]> {
-    const [rows] = await pool.execute<RowDataPacket[]>(
-      'SELECT * FROM roles WHERE activo = 1 ORDER BY nombre'
-    );
-    return rows as Rol[];
+  static async getAllRoles(page: number = 1, limit: number = 10, active?: boolean): Promise<{
+    roles: Rol[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    try {
+      // Calcular offset para paginación
+      const offset = (page - 1) * limit;
+
+      // Construir query base
+      let whereClause = '';
+      const queryParams: any[] = [];
+
+      if (active !== undefined) {
+        whereClause = 'WHERE activo = ?';
+        queryParams.push(active);
+      }
+
+      // Query para obtener el total de registros
+      const countQuery = `SELECT COUNT(*) as total FROM roles ${whereClause}`;
+      const countResult = await pool.execute<RowDataPacket[]>(countQuery, queryParams);
+      const total = (countResult[0] as any[])[0].total;
+
+      // Query para obtener los roles con paginación
+      // MySQL requiere que LIMIT y OFFSET sean valores literales, no parámetros preparados
+      const rolesQuery = `
+        SELECT * FROM roles 
+        ${whereClause}
+        ORDER BY nombre ASC 
+        LIMIT ${parseInt(limit.toString())} OFFSET ${parseInt(offset.toString())}
+      `;
+
+      const rolesResult = await pool.execute<RowDataPacket[]>(rolesQuery, queryParams);
+      const roles = rolesResult[0] as Rol[];
+
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        roles,
+        total,
+        page,
+        totalPages
+      };
+    } catch (error) {
+      console.error('Error al obtener roles:', error);
+      throw error;
+    }
   }
 
   static async getRoleById(id: number): Promise<Rol | null> {

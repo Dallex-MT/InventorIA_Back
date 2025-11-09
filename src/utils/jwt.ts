@@ -37,7 +37,7 @@ export function setTokenCookie(res: Response, token: string): void {
   
   res.cookie('token', token, {
     httpOnly: true,
-    sameSite: 'none',
+    sameSite: 'lax',
     secure: !isDevelopment, // Secure only in production (HTTPS)
     maxAge: 5 * 24 * 60 * 60 * 1000, // 5 days
     path: '/'
@@ -47,7 +47,7 @@ export function setTokenCookie(res: Response, token: string): void {
 export function clearTokenCookie(res: Response): void {
   res.clearCookie('token', {
     httpOnly: true,
-    sameSite: 'none',
+    sameSite: 'lax',
     secure: process.env['NODE_ENV'] !== 'development',
     path: '/'
   });

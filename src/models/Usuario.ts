@@ -39,6 +39,11 @@ export interface AuthResponse {
   success: boolean;
   message: string;
   user?: UsuarioSeguro;
+  metadata?: {
+    updatedBy?: number;
+    updatedUser?: number;
+    isAdmin?: boolean;
+  };
 }
 
 export interface JWTPayload {

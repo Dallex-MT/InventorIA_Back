@@ -7,13 +7,43 @@ import { pool } from '../utils/database';
 
 export class FacturaInternaController {
   
-  static async getAllFacturasInternas(_req: Request, res: Response): Promise<Response> {
+  static async getAllFacturasInternas(req: Request, res: Response): Promise<Response> {
     try {
-      const facturas = await FacturaInternaService.getAllFacturasInternas();
+      // Obtener parámetros de consulta
+      const page = parseInt(req.query['page'] as string) || 1;
+      const limit = parseInt(req.query['limit'] as string) || 10;
+      const estadoFilter = req.query['estado'] as 'BORRADOR' | 'CONFIRMADA' | 'ANULADA' | undefined;
+
+      // Validar parámetros
+      if (page < 1 || limit < 1 || limit > 100) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parámetros de paginación inválidos. La página debe ser >= 1 y el límite debe estar entre 1 y 100'
+        });
+      }
+
+      // Validar estado si se proporciona
+      if (estadoFilter && !['BORRADOR', 'CONFIRMADA', 'ANULADA'].includes(estadoFilter)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Estado inválido. Debe ser BORRADOR, CONFIRMADA o ANULADA'
+        });
+      }
+
+      // Obtener facturas con paginación y filtro
+      const result = await FacturaInternaService.getAllFacturasInternas(page, limit, estadoFilter);
       
       return res.json({
         success: true,
-        data: facturas,
+        data: {
+          invoices: result.facturas,
+          pagination: {
+            total: result.total,
+            page: result.page,
+            totalPages: result.totalPages,
+            limit: limit
+          }
+        },
         message: 'Facturas internas obtenidas exitosamente'
       });
     } catch (error) {

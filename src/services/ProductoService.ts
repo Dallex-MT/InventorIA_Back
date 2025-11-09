@@ -4,11 +4,53 @@ import { ResultSetHeader, RowDataPacket } from 'mysql2';
 
 export class ProductoService {
   
-  static async getAllProducts(): Promise<Producto[]> {
-    const [rows] = await pool.execute<RowDataPacket[]>(
-      'SELECT * FROM productos WHERE activo = 1 ORDER BY nombre'
-    );
-    return rows as Producto[];
+  static async getAllProducts(page: number = 1, limit: number = 10, activeFilter?: boolean):
+    Promise<{ products: Producto[]; total: number; page: number; totalPages: number; }> {
+    try {
+      // Calcular offset para paginación
+      const offset = (page - 1) * limit;
+
+      // Construir query base
+      let whereClause = '';
+      const queryParams: any[] = [];
+
+      if (activeFilter !== undefined) {
+        whereClause = 'WHERE activo = ?';
+        queryParams.push(activeFilter);
+      }
+
+      // Query para obtener el total de registros
+      const countQuery = `SELECT COUNT(*) as total FROM productos ${whereClause}`;
+      
+      // Asegurarnos de que los parámetros del count sean del tipo correcto
+      const countParams = queryParams.map(param => param === 'true' ? 1 : (param === 'false' ? 0 : param));
+      const [countRows] = await pool.execute<RowDataPacket[]>(countQuery, countParams);
+      const total = countRows[0]?.['total'] || 0;
+
+      // Query para obtener los productos con paginación
+      // MySQL requiere que LIMIT y OFFSET sean valores literales, no parámetros preparados
+      const productsQuery = `
+        SELECT * FROM productos 
+        ${whereClause}
+        ORDER BY nombre ASC 
+        LIMIT ${parseInt(limit.toString())} OFFSET ${parseInt(offset.toString())}
+      `;
+
+      const [rows] = await pool.execute<RowDataPacket[]>(productsQuery, queryParams);
+      const products = rows as Producto[];
+
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        products,
+        total,
+        page,
+        totalPages
+      };
+    } catch (error) {
+      console.error('Error al obtener productos:', error);
+      throw error;
+    }
   }
 
   static async getProductById(id: number): Promise<Producto | null> {

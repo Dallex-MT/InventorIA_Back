@@ -1,19 +1,41 @@
-import { Request, Response } from 'express';
-import { RowDataPacket } from 'mysql2/promise';
-import { RolService } from '../services/RolService';
-import { RolCreateDTO, RolUpdateDTO } from '../models/Rol';
-import { AuthenticatedRequest } from '../middleware/auth';
 import { pool } from '../utils/database';
+import { RolCreateDTO, RolUpdateDTO } from '../models/Rol';
+import { RowDataPacket } from 'mysql2';
+import { RolService } from '../services/RolService';
+import { Request, Response } from 'express';
+import { AuthenticatedRequest } from '../middleware/auth';
 
 export class RolController {
   
-  static async getAllRoles(_req: Request, res: Response): Promise<Response> {
+  static async getAllRoles(req: Request, res: Response): Promise<Response> {
     try {
-      const roles = await RolService.getAllRoles();
+      const { page = '1', limit = '10', active } = req.query;
+
+      const pageNum = Math.max(1, parseInt(page as string) || 1);
+      const limitNum = Math.max(1, Math.min(100, parseInt(limit as string) || 10));
+      
+      // Validar límites de paginación
+      if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parámetros de paginación inválidos'
+        });
+      }
+
+      let activeFilter: boolean | undefined;
+      if (active !== undefined) {
+        if (active === 'true') {
+          activeFilter = true;
+        } else if (active === 'false') {
+          activeFilter = false;
+        }
+      }
+
+      const result = await RolService.getAllRoles(pageNum, limitNum, activeFilter);
       
       return res.json({
         success: true,
-        data: roles,
+        data: result,
         message: 'Roles obtenidos exitosamente'
       });
     } catch (error) {

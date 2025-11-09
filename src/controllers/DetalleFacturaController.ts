@@ -7,14 +7,27 @@ import { pool } from '../utils/database';
 
 export class DetalleFacturaController {
   
-  static async getAllDetallesFactura(_req: Request, res: Response): Promise<Response> {
+  static async getAllDetallesFactura(req: Request, res: Response): Promise<Response> {
     try {
-      const detalles = await DetalleFacturaService.getAllDetallesFactura();
+      const { page = '1', limit = '10' } = req.query;
+
+      const pageNum = parseInt(page as string) || 1;
+      const limitNum = parseInt(limit as string) || 10;
+      
+      // Validar límites de paginación
+      if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parámetros de paginación inválidos'
+        });
+      }
+
+      const result = await DetalleFacturaService.getAllDetallesFactura(pageNum, limitNum);
       
       return res.json({
         success: true,
-        data: detalles,
-        message: 'Detalles de factura obtenidos exitosamente'
+        message: 'Detalles de factura obtenidos exitosamente',
+        data: result
       });
     } catch (error) {
       console.error('Error al obtener detalles de factura:', error);
@@ -48,8 +61,8 @@ export class DetalleFacturaController {
       
       return res.json({
         success: true,
-        data: detalle,
-        message: 'Detalle de factura obtenido exitosamente'
+        message: 'Detalle de factura obtenido exitosamente',
+        data: detalle
       });
     } catch (error) {
       console.error('Error al obtener detalle de factura:', error);

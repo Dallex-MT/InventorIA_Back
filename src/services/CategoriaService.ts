@@ -4,11 +4,53 @@ import { ResultSetHeader, RowDataPacket } from 'mysql2';
 
 export class CategoriaService {
   
-  static async getAllCategorias(): Promise<Categoria[]> {
-    const [rows] = await pool.execute<RowDataPacket[]>(
-      'SELECT * FROM categorias_producto WHERE activo = 1 ORDER BY nombre'
-    );
-    return rows as Categoria[];
+  static async getAllCategorias(page: number = 1, limit: number = 10, activeFilter?: boolean):
+    Promise<{ categorias: Categoria[]; total: number; page: number; totalPages: number; }> {
+    try {
+      // Calcular offset para paginación
+      const offset = (page - 1) * limit;
+
+      // Construir query base
+      let whereClause = '';
+      const queryParams: any[] = [];
+
+      if (activeFilter !== undefined) {
+        whereClause = 'WHERE activo = ?';
+        queryParams.push(activeFilter);
+      }
+
+      // Query para obtener el total de registros
+      const countQuery = `SELECT COUNT(*) as total FROM categorias_producto ${whereClause}`;
+      
+      // Asegurarnos de que los parámetros del count sean del tipo correcto
+      const countParams = [...queryParams];
+      const [countRows] = await pool.execute<RowDataPacket[]>(countQuery, countParams);
+      const total = countRows[0]?.['total'] || 0;
+
+      // Query para obtener las categorías con paginación
+      // MySQL requiere que LIMIT y OFFSET sean valores literales, no parámetros preparados
+      const categoriasQuery = `
+        SELECT * FROM categorias_producto 
+        ${whereClause}
+        ORDER BY nombre 
+        LIMIT ${parseInt(limit.toString())} OFFSET ${parseInt(offset.toString())}
+      `;
+
+      const [rows] = await pool.execute<RowDataPacket[]>(categoriasQuery, queryParams);
+      const categorias = rows as Categoria[];
+
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        categorias,
+        total,
+        page,
+        totalPages
+      };
+    } catch (error) {
+      console.error('Error al obtener categorías:', error);
+      throw error;
+    }
   }
 
   static async getCategoriaById(id: number): Promise<Categoria | null> {

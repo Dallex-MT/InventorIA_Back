@@ -57,8 +57,8 @@ app.get('/test', (_req, res) => {
 });
 
 // Registro de rutas
-logAppEvent('info', '📋 Registering routes...');
-app.use('/api/auth', authRoutes);
+logAppEvent('info', '📋 Registrando rutas...');
+app.use('/api', authRoutes);
 app.use('/api', rolRoutes);
 app.use('/api', categoriaRoutes);
 app.use('/api', productoRoutes);

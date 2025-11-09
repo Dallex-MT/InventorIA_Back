@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, extractTokenFromCookie, extractTokenFromHeader } from '../utils/jwt';
 import { JWTPayload } from '../models/Usuario';
+import { tokenBlacklist } from '../utils/tokenBlacklist';
 
 export interface AuthenticatedRequest extends Request {
   user?: JWTPayload;
@@ -33,6 +34,15 @@ export const authenticateToken = (req: AuthenticatedRequest, res: Response, next
       return;
     }
 
+    // Verificar si el token está en la lista negra
+    if (tokenBlacklist.isTokenBlacklisted(token)) {
+      res.status(401).json({
+        success: false,
+        message: 'Token invalidado - sesión cerrada'
+      });
+      return;
+    }
+
     req.user = decoded as JWTPayload;
     next();
   } catch (error) {
@@ -59,5 +69,35 @@ export const optionalAuthenticate = (req: AuthenticatedRequest, _res: Response, 
   } catch (error) {
     // Silently continue if optional authentication fails
     next();
+  }
+};
+
+export const requireAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+  try {
+    // Verificar que el usuario esté autenticado
+    if (!req.user || !req.user.userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Usuario no autenticado'
+      });
+      return;
+    }
+
+    // Verificar que el usuario tenga rol de administrador (rol_id = 1)
+    if (req.user.rol_id !== 1) {
+      res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para realizar esta acción'
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    console.error('Error en validación de rol administrador:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
   }
 };

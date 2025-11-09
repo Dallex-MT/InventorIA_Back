@@ -4,16 +4,57 @@ import { ResultSetHeader, RowDataPacket } from 'mysql2';
 
 export class FacturaInternaService {
   
-  static async getAllFacturasInternas(): Promise<FacturaInterna[]> {
-    const [rows] = await pool.execute<RowDataPacket[]>(
-      `SELECT fi.*, tm.nombre as tipo_movimiento_nombre, tm.afecta_stock, 
-              u.nombre_usuario, u.correo 
-       FROM facturas_internas fi
-       INNER JOIN tipos_movimiento tm ON fi.tipo_movimiento_id = tm.id
-       INNER JOIN usuarios u ON fi.usuario_responsable_id = u.id
-       ORDER BY fi.fecha_creacion DESC`
-    );
-    return rows as FacturaInterna[];
+  static async getAllFacturasInternas(page: number = 1, limit: number = 10, estadoFilter?: 'BORRADOR' | 'CONFIRMADA' | 'ANULADA'):
+    Promise<{ facturas: FacturaInterna[]; total: number; page: number; totalPages: number; }> {
+    try {
+      // Calcular offset para paginación
+      const offset = (page - 1) * limit;
+
+      // Construir query base
+      let whereClause = '';
+      const queryParams: any[] = [];
+
+      if (estadoFilter !== undefined) {
+        whereClause = 'WHERE fi.estado = ?';
+        queryParams.push(estadoFilter);
+      }
+
+      // Query para obtener el total de registros
+      const countQuery = `SELECT COUNT(*) as total FROM facturas_internas fi ${whereClause}`;
+      
+      // Asegurarnos de que los parámetros del count sean del tipo correcto
+      const countParams = [...queryParams];
+      const [countRows] = await pool.execute<RowDataPacket[]>(countQuery, countParams);
+      const total = countRows[0]?.['total'] || 0;
+
+      // Query para obtener las facturas con paginación
+      // MySQL requiere que LIMIT y OFFSET sean valores literales, no parámetros preparados
+      const facturasQuery = `
+        SELECT fi.*, tm.nombre as tipo_movimiento_nombre, tm.afecta_stock, 
+               u.nombre_usuario, u.correo 
+        FROM facturas_internas fi
+        INNER JOIN tipos_movimiento tm ON fi.tipo_movimiento_id = tm.id
+        INNER JOIN usuarios u ON fi.usuario_responsable_id = u.id
+        ${whereClause}
+        ORDER BY fi.fecha_creacion DESC 
+        LIMIT ${parseInt(limit.toString())} OFFSET ${parseInt(offset.toString())}
+      `;
+
+      const [rows] = await pool.execute<RowDataPacket[]>(facturasQuery, queryParams);
+      const facturas = rows as FacturaInterna[];
+
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        facturas,
+        total,
+        page,
+        totalPages
+      };
+    } catch (error) {
+      console.error('Error al obtener facturas internas:', error);
+      throw error;
+    }
   }
 
   static async getFacturaInternaById(id: number): Promise<FacturaInterna | null> {

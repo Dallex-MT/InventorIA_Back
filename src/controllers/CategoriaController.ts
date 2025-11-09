@@ -7,14 +7,44 @@ import { pool } from '../utils/database';
 
 export class CategoriaController {
   
-  static async getAllCategorias(_req: Request, res: Response): Promise<Response> {
+  static async getAllCategorias(req: Request, res: Response): Promise<Response> {
     try {
-      const categorias = await CategoriaService.getAllCategorias();
+      const { page = '1', limit = '10', active } = req.query;
+
+      const pageNum = parseInt(page as string) || 1;
+      const limitNum = parseInt(limit as string) || 10;
+      
+      // Validar límites de paginación
+      if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parámetros de paginación inválidos'
+        });
+      }
+
+      let activeFilter: boolean | undefined;
+      if (active !== undefined) {
+        if (active === 'true') {
+          activeFilter = true;
+        } else if (active === 'false') {
+          activeFilter = false;
+        }
+      }
+
+      const result = await CategoriaService.getAllCategorias(pageNum, limitNum, activeFilter);
       
       return res.json({
         success: true,
-        data: categorias,
-        message: 'Categorías obtenidas exitosamente'
+        message: 'Categorías obtenidas exitosamente',
+        data: {
+          categories: result.categorias,
+          pagination: {
+            total: result.total,
+            page: result.page,
+            totalPages: result.totalPages,
+            limit: limitNum
+          }
+        }
       });
     } catch (error) {
       console.error('Error al obtener categorías:', error);

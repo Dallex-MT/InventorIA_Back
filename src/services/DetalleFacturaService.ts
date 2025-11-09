@@ -4,11 +4,29 @@ import { ResultSetHeader, RowDataPacket } from 'mysql2';
 
 export class DetalleFacturaService {
   
-  static async getAllDetallesFactura(): Promise<DetalleFactura[]> {
-    const [rows] = await pool.execute<RowDataPacket[]>(
-      'SELECT * FROM detalle_facturas ORDER BY id'
+  static async getAllDetallesFactura(page: number = 1, limit: number = 10): Promise<{ detalles: DetalleFactura[], total: number, page: number, totalPages: number }> {
+    const offset = (page - 1) * limit;
+
+    // Obtener el total de registros
+    const [countResult] = await pool.execute<RowDataPacket[]>(
+      'SELECT COUNT(*) as total FROM detalle_facturas'
     );
-    return rows as DetalleFactura[];
+    const total = countResult[0]?.['total'] || 0;
+
+    // Obtener los registros paginados
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      'SELECT * FROM detalle_facturas ORDER BY id LIMIT ? OFFSET ?',
+      [limit.toString(), offset.toString()]
+    );
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      detalles: rows as DetalleFactura[],
+      total,
+      page,
+      totalPages
+    };
   }
 
   static async getDetalleFacturaById(id: number): Promise<DetalleFactura | null> {

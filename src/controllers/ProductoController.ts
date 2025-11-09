@@ -7,14 +7,38 @@ import { pool } from '../utils/database';
 
 export class ProductoController {
   
-  static async getAllProducts(_req: Request, res: Response): Promise<Response> {
+  static async getAllProducts(req: Request, res: Response): Promise<Response> {
     try {
-      const products = await ProductoService.getAllProducts();
+      // Obtener parámetros de consulta
+      const page = parseInt(req.query['page'] as string) || 1;
+      const limit = parseInt(req.query['limit'] as string) || 10;
+      const activeFilter = req.query['active'] !== undefined ? 
+        (req.query['active'] === 'true' ? true : req.query['active'] === 'false' ? false : undefined) : 
+        undefined;
+
+      // Validar parámetros
+      if (page < 1 || limit < 1 || limit > 100) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parámetros de paginación inválidos. La página debe ser >= 1 y el límite debe estar entre 1 y 100'
+        });
+      }
+
+      // Obtener productos con paginación y filtro
+      const result = await ProductoService.getAllProducts(page, limit, activeFilter);
       
       return res.json({
         success: true,
-        data: products,
-        message: 'Productos obtenidos exitosamente'
+        message: 'Productos obtenidos exitosamente',
+        data: {
+          products: result.products,
+          pagination: {
+            total: result.total,
+            page: result.page,
+            totalPages: result.totalPages,
+            limit: limit
+          }
+        }
       });
     } catch (error) {
       console.error('Error al obtener productos:', error);
