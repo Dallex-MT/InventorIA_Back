@@ -12,6 +12,7 @@ import productoRoutes from './routes/productoRoutes';
 import tipoMovimientoRoutes from './routes/tipoMovimientoRoutes';
 import facturaInternaRoutes from './routes/facturaInternaRoutes';
 import detalleFacturaRoutes from './routes/detalleFacturaRoutes';
+import imageRoutes from './routes/imageRoutes';
 
 // Asegurarse de que existe el directorio de logs
 import fs from 'fs';
@@ -65,6 +66,7 @@ app.use('/api', productoRoutes);
 app.use('/api', tipoMovimientoRoutes);
 app.use('/api', facturaInternaRoutes);
 app.use('/api', detalleFacturaRoutes);
+app.use('/api', imageRoutes);
 
 // Manejador de rutas no encontradas
 app.use((req, res) => {
