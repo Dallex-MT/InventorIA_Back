@@ -3,20 +3,20 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import { testConnection } from './utils/database';
-import { httpLogger, logAppEvent } from './utils/logger';
-import authRoutes from './routes/auth';
-import rolRoutes from './routes/rolRoutes';
-import categoriaRoutes from './routes/categoriaRoutes';
-import productoRoutes from './routes/productoRoutes';
-import tipoMovimientoRoutes from './routes/tipoMovimientoRoutes';
-import facturaInternaRoutes from './routes/facturaInternaRoutes';
-import detalleFacturaRoutes from './routes/detalleFacturaRoutes';
-import imageRoutes from './routes/imageRoutes';
-
-// Asegurarse de que existe el directorio de logs
 import fs from 'fs';
 import path from 'path';
+import { testConnection } from './shared/utils/database';
+import { httpLogger, logAppEvent } from './shared/utils/logger';
+import authRoutes from './modules/auth/routes/auth';
+import rolRoutes from './modules/auth/routes/rolRoutes';
+import categoriaRoutes from './modules/catalog/routes/categoriaRoutes';
+import productoRoutes from './modules/catalog/routes/productoRoutes';
+import tipoMovimientoRoutes from './modules/catalog/routes/tipoMovimientoRoutes';
+import facturaInternaRoutes from './modules/invoicing/routes/facturaInternaRoutes';
+import detalleFacturaRoutes from './modules/invoicing/routes/detalleFacturaRoutes';
+import imageRoutes from './modules/invoicing/routes/imageRoutes';
+
+// Asegurarse de que existe el directorio de logs
 const logsDir = path.join(__dirname, '..', 'logs');
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir);
@@ -41,20 +41,20 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/health', (_req, res) => {
-    logAppEvent('info', '🎯 Health check endpoint accessed');
-    res.json({
-        success: true,
-        message: 'Servidor funcionando correctamente',
-        timestamp: new Date().toISOString()
-    });
+  logAppEvent('info', '🎯 Health check endpoint accessed');
+  res.json({
+    success: true,
+    message: 'Servidor funcionando correctamente',
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.get('/test', (_req, res) => {
-    logAppEvent('info', '🎯 Test endpoint accessed');
-    res.json({
-        success: true,
-        message: 'Test route working'
-    });
+  logAppEvent('info', '🎯 Test endpoint accessed');
+  res.json({
+    success: true,
+    message: 'Test route working'
+  });
 });
 
 // Registro de rutas
@@ -71,7 +71,7 @@ app.use('/api', imageRoutes);
 // Manejador de rutas no encontradas
 app.use((req, res) => {
   logAppEvent('warn', `❌ Route not found: ${req.method} ${req.url}`);
-  
+
   res.status(404).json({
     success: false,
     message: 'Ruta no encontrada'
@@ -84,7 +84,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
     error: err.message,
     stack: process.env['NODE_ENV'] === 'development' ? err.stack : undefined
   });
-  
+
   res.status(500).json({
     success: false,
     message: 'Error interno del servidor',
@@ -95,11 +95,11 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 const startServer = async () => {
   try {
     logAppEvent('info', '🚀 Iniciando servidor...');
-    
+
     logAppEvent('info', '🔍 Probando conexión a base de datos...');
     await testConnection();
     logAppEvent('info', '✅ Conexión a base de datos exitosa');
-    
+
     app.listen(PORT, () => {
       logAppEvent('info', '🌐 Servidor iniciado', {
         port: PORT,
