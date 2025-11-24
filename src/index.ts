@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { testConnection } from './shared/utils/database';
 import { httpLogger, logAppEvent } from './shared/utils/logger';
+import { initWebSocketServer } from './shared/websocket/server';
 import authRoutes from './modules/auth/routes/auth';
 import rolRoutes from './modules/auth/routes/rolRoutes';
 import categoriaRoutes from './modules/catalog/routes/categoriaRoutes';
@@ -99,6 +100,10 @@ const startServer = async () => {
     logAppEvent('info', '🔍 Probando conexión a base de datos...');
     await testConnection();
     logAppEvent('info', '✅ Conexión a base de datos exitosa');
+
+    logAppEvent('info', '🔌 Inicializando servidor WebSocket...');
+    initWebSocketServer();
+    logAppEvent('info', '✅ Servidor WebSocket iniciado');
 
     app.listen(PORT, () => {
       logAppEvent('info', '🌐 Servidor iniciado', {

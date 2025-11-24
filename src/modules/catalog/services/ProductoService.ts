@@ -1,12 +1,14 @@
 import { pool } from '../../../shared/utils/database';
 import { Producto, ProductoCreateDTO, ProductoUpdateDTO } from '../models/Producto';
 import { ResultSetHeader, RowDataPacket } from 'mysql2';
+import { publishProductoChange } from '../../../shared/websocket/server';
+import { logAppEvent } from '../../../shared/utils/logger';
 
 export class ProductoService {
 
   static async getAllProducts(
-    page: number = 1, 
-    limit: number = 10, 
+    page: number = 1,
+    limit: number = 10,
     activeFilter?: boolean,
     categoriaId?: number,
     unidadMedida?: string,
@@ -142,6 +144,16 @@ export class ProductoService {
       throw new Error('Error al crear el producto');
     }
 
+    // Notificar creación vía WebSocket
+    try {
+      publishProductoChange('created', newProduct);
+      logAppEvent('info', 'producto_created_published', { id: newProduct.id });
+    } catch (wsError) {
+      logAppEvent('error', 'producto_created_publish_error', {
+        error: wsError instanceof Error ? wsError.message : String(wsError)
+      });
+    }
+
     return newProduct;
   }
 
@@ -204,7 +216,21 @@ export class ProductoService {
       return null;
     }
 
-    return await this.getProductById(id);
+    const updatedProduct = await this.getProductById(id);
+
+    // Notificar actualización vía WebSocket
+    if (updatedProduct) {
+      try {
+        publishProductoChange('updated', updatedProduct);
+        logAppEvent('info', 'producto_updated_published', { id: updatedProduct.id });
+      } catch (wsError) {
+        logAppEvent('error', 'producto_updated_publish_error', {
+          error: wsError instanceof Error ? wsError.message : String(wsError)
+        });
+      }
+    }
+
+    return updatedProduct;
   }
 
   static async deleteProduct(id: number): Promise<boolean> {
@@ -213,7 +239,21 @@ export class ProductoService {
       [id]
     );
 
-    return result.affectedRows > 0;
+    const wasDeleted = result.affectedRows > 0;
+
+    // Notificar eliminación vía WebSocket
+    if (wasDeleted) {
+      try {
+        publishProductoChange('deleted', { id });
+        logAppEvent('info', 'producto_deleted_published', { id });
+      } catch (wsError) {
+        logAppEvent('error', 'producto_deleted_publish_error', {
+          error: wsError instanceof Error ? wsError.message : String(wsError)
+        });
+      }
+    }
+
+    return wasDeleted;
   }
 
   static async hardDeleteProduct(id: number): Promise<boolean> {
