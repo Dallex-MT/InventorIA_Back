@@ -2,6 +2,8 @@ export interface DetalleFactura {
   id: number;
   factura_id: number;
   producto_id: number;
+  producto_nombre?: string;
+  producto_unidad_medida?: string;
   cantidad: number;
   precio_unitario: number;
   subtotal: number;

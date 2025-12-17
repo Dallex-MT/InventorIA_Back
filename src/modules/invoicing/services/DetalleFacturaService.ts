@@ -44,7 +44,20 @@ export class DetalleFacturaService {
 
   static async getDetallesByFacturaId(factura_id: number): Promise<DetalleFactura[]> {
     const [rows] = await pool.execute<RowDataPacket[]>(
-      'SELECT * FROM detalle_facturas WHERE factura_id = ? ORDER BY id',
+      `SELECT 
+        df.id,
+        df.factura_id,
+        df.producto_id,
+        df.cantidad,
+        df.precio_unitario,
+        df.subtotal,
+        p.nombre as producto_nombre,
+        um.nombre as producto_unidad_medida
+      FROM detalle_facturas df
+      INNER JOIN productos p ON df.producto_id = p.id
+      INNER JOIN unidades_medida um ON p.unidad_medida_id = um.id
+      WHERE df.factura_id = ? 
+      ORDER BY df.id`,
       [factura_id]
     );
 

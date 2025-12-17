@@ -4,15 +4,14 @@ import { DetalleFacturaController } from '../controllers/DetalleFacturaControlle
 
 const router = Router();
 
-// Rutas públicas (solo lectura)
+router.use(authenticateToken);
+
 router.get('/detalles-factura', DetalleFacturaController.getAllDetallesFactura);
 router.get('/detalles-factura/:id', DetalleFacturaController.getDetalleFacturaById);
 router.get('/detalles-factura/factura/:factura_id', DetalleFacturaController.getDetallesByFacturaId);
 router.get('/detalles-factura/producto/:producto_id', DetalleFacturaController.getDetallesByProductoId);
-
-// Rutas protegidas (requieren autenticación)
-router.post('/detalles-factura', authenticateToken, DetalleFacturaController.createDetalleFactura);
-router.put('/detalles-factura/:id', authenticateToken, DetalleFacturaController.updateDetalleFactura);
-router.delete('/detalles-factura/:id', authenticateToken, DetalleFacturaController.deleteDetalleFactura);
+router.post('/detalles-factura', DetalleFacturaController.createDetalleFactura);
+router.put('/detalles-factura/:id', DetalleFacturaController.updateDetalleFactura);
+router.delete('/detalles-factura/:id', DetalleFacturaController.deleteDetalleFactura);
 
 export default router;

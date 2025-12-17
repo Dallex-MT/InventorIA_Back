@@ -5,9 +5,9 @@ import { JWTPayload } from '../types/auth';
 const JWT_SECRET = process.env['JWT_SECRET'] || 'your-secret-key-change-this-in-production';
 const JWT_EXPIRES_IN = process.env['JWT_EXPIRES_IN'] || '24h';
 
-export function generateToken(payload: JWTPayload): string {
+export function generateToken(payload: JWTPayload, expiresIn: string | number = JWT_EXPIRES_IN): string {
   const options: jwt.SignOptions = {
-    expiresIn: JWT_EXPIRES_IN as any
+    expiresIn: expiresIn as any
   };
   return jwt.sign(payload, JWT_SECRET, options);
 }

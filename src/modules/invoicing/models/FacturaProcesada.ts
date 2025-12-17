@@ -3,6 +3,8 @@ export interface ProductoFactura {
   unidad_medida: string;
   cantidad: number;
   precio_unitario: number;
+  producto_id?: number;
+  unidad_medida_id?: number;
 }
 
 export interface FacturaProcesada {
@@ -20,4 +22,3 @@ export interface FacturaProcesadaResponse {
   message?: string;
   error?: string;
 }
-

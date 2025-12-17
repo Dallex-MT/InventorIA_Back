@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 // Test setup file
 jest.setTimeout(10000); // 10 seconds timeout for tests
 

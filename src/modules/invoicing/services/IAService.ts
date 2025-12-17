@@ -25,24 +25,19 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY = 2000; // 2 segundos
 
 export class ImageProcessingService {
-  private static readonly MODEL_NAME = 'huihui_ai/qwen3-vl-abliterated:2b-instruct';
-  private static readonly PROMPT = `Analiza únicamente la información contenida en la factura visible en la imagen.
-Tu objetivo es extraer datos estructurados y devolver SOLO un objeto JSON válido, sin texto adicional, explicaciones o comentarios.
-
-IMPORTANTE: Responde ÚNICAMENTE con un objeto JSON válido, sin markdown, sin código, sin explicaciones.
-
-Sigue estrictamente estas reglas:
-- codigo_interno: concatena el nombre de la empresa emisora (letras mayúsculas, sin espacios, sin tildes, sin caracteres especiales) + el número completo de factura.
-- concepto: clasifica el tipo de factura según su contenido principal en UNA de estas categorías: "materiales", "equipos", "servicios" o "otros".
-- fecha_movimiento: detecta la fecha principal de emisión o transacción y formateala en DD-MM-YYYY.
-- total: extrae el monto total a pagar como número (usa punto como separador decimal).
-- observaciones: redacta una síntesis breve y objetiva del contenido o propósito de la factura (máximo 100 caracteres).
-- productos: lista los ítems de la factura en un array. Cada ítem debe contener:
-  * nombre: el nombre completo del producto o servicio.
-  * unidad_medida: el tipo de unidad (ejemplo: "kg", "unidad", "servicio", etc.).
-  * cantidad: número entero.
-  * precio_unitario: número con 2 decimales.
-
+  private static readonly MODEL_NAME = process.env['OLLAMA_CHAT_MODEL']??'';
+  private static readonly PROMPT = `Analiza únicamente la información contenida en la factura visible en la imagen y devuelve SOLO un objeto JSON válido, sin texto adicional, sin explicaciones, sin comentarios, sin markdown.
+Reglas estrictas:
+- codigo_interno: concatena el nombre de la empresa emisora en MAYÚSCULAS, sin tildes ni caracteres especiales + todo el número de factura COMPLETO (ejemplo: EMPRESASINESPACIO-0001-11212-212).
+- concepto: clasifica en UNA categoría: "materiales", "equipos", "servicios", "otros".
+- fecha_movimiento: usa la fecha principal de emisión o transacción en formato DD-MM-YYYY.
+- total: monto total a pagar como número (usa punto como separador decimal).
+- observaciones: descripción breve de la factura (máx. 200 caracteres).
+- productos: lista de ítems en un array. Cada ítem debe contener:
+- nombre: el nombre completo del producto/servicio es el DETALLE O DESCRIPCIÓN (Sin tildes ni letras especiales). Si no existe, usa el código del producto.
+- unidad_medida: tipo de unidad (ejemplo: "kg", "unidad").
+- cantidad: número entero, calculado dividiendo el valor/precio total del producto entre el precio unitario para asegurar precisión.
+- precio_unitario: número con 2 decimales.
 Formato JSON esperado:
 {
   "codigo_interno": "string",
@@ -59,8 +54,7 @@ Formato JSON esperado:
     }
   ]
 }
-
-Responde SOLO con el JSON, sin texto adicional.`;
+Responde ÚNICAMENTE con el JSON válido.`;
 
   /**
    * Procesa una imagen de factura y extrae la información estructurada
@@ -105,7 +99,7 @@ Responde SOLO con el JSON, sin texto adicional.`;
 
         // Intentar parsear el JSON (puede venir con markdown o texto adicional)
         let jsonContent = content.trim();
-        
+
         // Eliminar markdown code blocks si existen
         if (jsonContent.startsWith('```json')) {
           jsonContent = jsonContent.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();

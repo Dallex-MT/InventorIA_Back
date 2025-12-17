@@ -7,6 +7,8 @@ const authController = new AuthController();
 
 // Rutas públicas
 router.post('/auth/login', (req, res) => authController.login(req, res));
+router.post('/password-reset', (req, res) => authController.requestPasswordReset(req, res));
+router.post('/verify-reset', (req, res) => authController.resetPassword(req, res));
 
 // Rutas que requieren autenticación
 router.get('/auth/me', authenticateToken, (req, res) => authController.me(req, res));

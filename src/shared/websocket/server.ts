@@ -23,7 +23,7 @@ let broadcastQueue: Promise<void> = Promise.resolve()
 
 export const initWebSocketServer = (): void => {
   if (wss) return
-  const port = parseInt(process.env['WS_PORT'] || '3001', 10)
+  const port = parseInt(process.env['WS_PORT'] || '3005', 10)
   wss = new WebSocketServer({ port })
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {

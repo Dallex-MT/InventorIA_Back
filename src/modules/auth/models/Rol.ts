@@ -3,20 +3,26 @@ export interface Rol {
   nombre: string;
   descripcion: string | null;
   activo: boolean;
-  fecha_creacion: Date;
-  fecha_actualizacion: Date;
+  permisos: Permiso[];
+}
+
+export interface Permiso {
+  id: number;
+  nombre: string;
 }
 
 export interface RolCreateDTO {
   nombre: string;
   descripcion?: string;
   activo?: boolean;
+  permisos_ids?: number[];
 }
 
 export interface RolUpdateDTO {
   nombre?: string;
   descripcion?: string;
   activo?: boolean;
+  permisos_ids?: number[];
 }
 
 export interface RolResponse {

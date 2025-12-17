@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { RowDataPacket } from 'mysql2/promise';
 import { FacturaInternaService } from '../services/FacturaInternaService';
 import { FacturaInternaCreateDTO, FacturaInternaUpdateDTO } from '../models/FacturaInterna';
+import { DetalleFacturaCreateDTO } from '../models/DetalleFactura';
 import { AuthenticatedRequest } from '../../../shared/middleware/auth';
 import { pool } from '../../../shared/utils/database';
 
@@ -13,14 +14,17 @@ export class FacturaInternaController {
       const page = parseInt(req.query['page'] as string) || 1;
       const limit = parseInt(req.query['limit'] as string) || 10;
       const estadoFilter = req.query['estado'] as 'BORRADOR' | 'CONFIRMADA' | 'ANULADA' | undefined;
+      const searchText = req.query['search'] as string | undefined;
+      const fechaInicio = req.query['fecha_inicio'] as string | undefined;
+      const fechaFin = req.query['fecha_fin'] as string | undefined;
 
       // Validar parámetros
-      if (page < 1 || limit < 1 || limit > 100) {
-        return res.status(400).json({
-          success: false,
-          message: 'Parámetros de paginación inválidos. La página debe ser >= 1 y el límite debe estar entre 1 y 100'
-        });
-      }
+      // if (page < 1 || limit < 1 || limit > 1000) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: 'Parámetros de paginación inválidos. La página debe ser >= 1 y el límite debe estar entre 1 y 1000'
+      //   });
+      // }
 
       // Validar estado si se proporciona
       if (estadoFilter && !['BORRADOR', 'CONFIRMADA', 'ANULADA'].includes(estadoFilter)) {
@@ -30,8 +34,15 @@ export class FacturaInternaController {
         });
       }
 
-      // Obtener facturas con paginación y filtro
-      const result = await FacturaInternaService.getAllFacturasInternas(page, limit, estadoFilter);
+      // Obtener facturas con paginación y filtros
+      const result = await FacturaInternaService.getAllFacturasInternas(
+        page, 
+        limit, 
+        estadoFilter,
+        searchText,
+        fechaInicio,
+        fechaFin
+      );
 
       return res.json({
         success: true,
@@ -48,6 +59,23 @@ export class FacturaInternaController {
       });
     } catch (error) {
       console.error('Error al obtener facturas internas:', error);
+      
+      // Manejar errores de validación de fecha
+      if (error instanceof Error && error.message.includes('Formato de fecha')) {
+        return res.status(400).json({
+          success: false,
+          message: error.message
+        });
+      }
+      
+      // Manejar error de lógica de fechas
+      if (error instanceof Error && error.message.includes('fecha de inicio debe ser menor')) {
+        return res.status(400).json({
+          success: false,
+          message: error.message
+        });
+      }
+      
       return res.status(500).json({
         success: false,
         message: 'Error al obtener facturas internas',
@@ -157,8 +185,9 @@ export class FacturaInternaController {
         fecha_movimiento,
         total,
         observaciones,
-        estado
-      }: FacturaInternaCreateDTO = req.body;
+        estado,
+        detalles
+      }: FacturaInternaCreateDTO & { detalles?: Omit<DetalleFacturaCreateDTO, 'factura_id'>[] } = req.body;
 
       // Validación básica
       if (!codigo_interno || codigo_interno.trim().length === 0) {
@@ -201,6 +230,35 @@ export class FacturaInternaController {
           success: false,
           message: 'La fecha de movimiento es requerida'
         });
+      }
+
+      // Validar detalles
+      if (!detalles || !Array.isArray(detalles) || detalles.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Se requiere un array de detalles de factura con al menos un ítem'
+        });
+      }
+
+      for (const detalle of detalles) {
+        if (!detalle.producto_id || detalle.cantidad === undefined || detalle.precio_unitario === undefined) {
+          return res.status(400).json({
+            success: false,
+            message: 'Cada detalle debe tener producto_id, cantidad y precio_unitario'
+          });
+        }
+        if (detalle.cantidad <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'La cantidad debe ser mayor a 0'
+          });
+        }
+        if (detalle.precio_unitario < 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'El precio unitario no puede ser negativo'
+          });
+        }
       }
 
       // Validar que el código interno no exista
@@ -257,12 +315,13 @@ export class FacturaInternaController {
         estado: estado || 'BORRADOR'
       };
 
-      const newFactura = await FacturaInternaService.createFacturaInterna(facturaData);
+      const result = await FacturaInternaService.createFacturaWithDetails(facturaData, detalles);
 
       return res.status(201).json({
         success: true,
-        data: newFactura,
-        message: 'Factura interna creada exitosamente'
+        data: result.factura,
+        detallesProcessed: result.detallesCount,
+        message: 'Factura interna creada exitosamente con sus detalles'
       });
     } catch (error) {
       console.error('Error al crear factura interna:', error);
@@ -274,6 +333,71 @@ export class FacturaInternaController {
     }
   }
 
+  /**
+   * @swagger
+   * /facturas-internas/{id}:
+   *   put:
+   *     summary: Actualiza una factura interna existente y sus detalles
+   *     tags: [Facturas Internas]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: integer
+   *         description: ID de la factura interna
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               codigo_interno:
+   *                 type: string
+   *               tipo_movimiento_id:
+   *                 type: integer
+   *               concepto:
+   *                 type: string
+   *               usuario_responsable_id:
+   *                 type: integer
+   *               fecha_movimiento:
+   *                 type: string
+   *                 format: date
+   *               total:
+   *                 type: number
+   *               observaciones:
+   *                 type: string
+   *               estado:
+   *                 type: string
+   *                 enum: [BORRADOR, CONFIRMADA, ANULADA]
+   *               detalles:
+   *                 type: array
+   *                 items:
+   *                   type: object
+   *                   required:
+   *                     - producto_id
+   *                     - cantidad
+   *                     - precio_unitario
+   *                   properties:
+   *                     producto_id:
+   *                       type: integer
+   *                     cantidad:
+   *                       type: number
+   *                     precio_unitario:
+   *                       type: number
+   *     responses:
+   *       200:
+   *         description: Factura actualizada exitosamente
+   *       400:
+   *         description: Datos inválidos
+   *       404:
+   *         description: Factura no encontrada
+   *       409:
+   *         description: Código interno ya existe
+   *       500:
+   *         description: Error del servidor
+   */
   static async updateFacturaInterna(req: AuthenticatedRequest, res: Response): Promise<Response> {
     try {
       const id = parseInt(req.params['id'] as string);
@@ -285,8 +409,9 @@ export class FacturaInternaController {
         fecha_movimiento,
         total,
         observaciones,
-        estado
-      }: FacturaInternaUpdateDTO = req.body;
+        estado,
+        detalles
+      }: FacturaInternaUpdateDTO & { detalles?: Omit<DetalleFacturaCreateDTO, 'factura_id'>[] } = req.body;
 
       if (isNaN(id)) {
         return res.status(400).json({
@@ -388,6 +513,36 @@ export class FacturaInternaController {
         });
       }
 
+      // Validar detalles si se proporcionan
+      if (detalles !== undefined) {
+        if (!Array.isArray(detalles)) {
+           return res.status(400).json({
+             success: false,
+             message: 'Los detalles deben ser un array'
+           });
+        }
+        for (const detalle of detalles) {
+          if (!detalle.producto_id || detalle.cantidad === undefined || detalle.precio_unitario === undefined) {
+            return res.status(400).json({
+              success: false,
+              message: 'Cada detalle debe tener producto_id, cantidad y precio_unitario'
+            });
+          }
+          if (detalle.cantidad <= 0) {
+            return res.status(400).json({
+              success: false,
+              message: 'La cantidad debe ser mayor a 0'
+            });
+          }
+          if (detalle.precio_unitario < 0) {
+            return res.status(400).json({
+              success: false,
+              message: 'El precio unitario no puede ser negativo'
+            });
+          }
+        }
+      }
+
       const facturaData: FacturaInternaUpdateDTO = {};
       if (codigo_interno !== undefined) facturaData.codigo_interno = codigo_interno.trim();
       if (tipo_movimiento_id !== undefined) facturaData.tipo_movimiento_id = tipo_movimiento_id;
@@ -398,11 +553,20 @@ export class FacturaInternaController {
       if (observaciones !== undefined) facturaData.observaciones = observaciones.trim();
       if (estado !== undefined) facturaData.estado = estado;
 
-      const updatedFactura = await FacturaInternaService.updateFacturaInterna(id, facturaData);
+      const result = await FacturaInternaService.updateFacturaWithDetails(id, facturaData, detalles);
+
+      if (!result.factura) {
+        // Esto no debería ocurrir si pasamos la validación inicial, pero por si acaso
+        return res.status(404).json({
+          success: false,
+          message: 'Factura no encontrada durante la actualización'
+        });
+      }
 
       return res.json({
         success: true,
-        data: updatedFactura,
+        data: result.factura,
+        detallesProcessed: result.detallesCount,
         message: 'Factura interna actualizada exitosamente'
       });
     } catch (error) {

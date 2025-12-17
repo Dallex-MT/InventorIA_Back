@@ -1,9 +1,12 @@
+import { UnidadMedida } from './UnidadMedida';
+
 export interface Producto {
   id: number;
   nombre: string;
   descripcion: string | null;
   categoria_id: number;
-  unidad_medida: string;
+  unidad_medida_id: number;
+  unidad_medida?: UnidadMedida; // Para cuando se hace join
   stock_actual: number;
   stock_minimo: number;
   precio_referencia: number;
@@ -16,7 +19,7 @@ export interface ProductoCreateDTO {
   nombre: string;
   descripcion?: string;
   categoria_id: number;
-  unidad_medida: string;
+  unidad_medida_id: number;
   stock_actual?: number;
   stock_minimo?: number;
   precio_referencia?: number;
@@ -27,7 +30,7 @@ export interface ProductoUpdateDTO {
   nombre?: string;
   descripcion?: string;
   categoria_id?: number;
-  unidad_medida?: string;
+  unidad_medida_id?: number;
   stock_actual?: number;
   stock_minimo?: number;
   precio_referencia?: number;

@@ -16,16 +16,16 @@ export class ProductoController {
         (req.query['active'] === 'true' ? true : req.query['active'] === 'false' ? false : undefined) :
         undefined;
       const categoriaId = req.query['categoria_id'] ? parseInt(req.query['categoria_id'] as string) : undefined;
-      const unidadMedida = req.query['unidad_medida'] as string;
+      const unidadMedidaId = req.query['unidad_medida_id'] ? parseInt(req.query['unidad_medida_id'] as string) : undefined;
       const searchText = req.query['search'] as string;
 
-      // Validar parámetros
-      if (page < 1 || limit < 1 || limit > 100) {
-        return res.status(400).json({
-          success: false,
-          message: 'Parámetros de paginación inválidos. La página debe ser >= 1 y el límite debe estar entre 1 y 100'
-        });
-      }
+      //Validar parámetros
+      // if (page < 1 || limit < 1 || limit > 100 || limit>1000) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: 'Parámetros de paginación inválidos. La página debe ser >= 1 y el límite debe estar entre 1 y 100'
+      //   });
+      // }
 
       // Validar categoria_id si se proporciona
       if (categoriaId !== undefined && (isNaN(categoriaId) || categoriaId < 1)) {
@@ -35,7 +35,15 @@ export class ProductoController {
         });
       }
 
-      const result = await ProductoService.getAllProducts(page, limit, activeFilter, categoriaId, unidadMedida, searchText);
+      // Validar unidad_medida_id si se proporciona
+      if (unidadMedidaId !== undefined && (isNaN(unidadMedidaId) || unidadMedidaId < 1)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID de unidad de medida inválido'
+        });
+      }
+
+      const result = await ProductoService.getAllProducts(page, limit, activeFilter, categoriaId, unidadMedidaId, searchText);
 
       return res.json({
         success: true,
@@ -129,7 +137,7 @@ export class ProductoController {
         nombre,
         descripcion,
         categoria_id,
-        unidad_medida,
+        unidad_medida_id,
         stock_actual,
         stock_minimo,
         precio_referencia,
@@ -158,17 +166,10 @@ export class ProductoController {
         });
       }
 
-      if (!unidad_medida || unidad_medida.trim().length === 0) {
+      if (!unidad_medida_id) {
         return res.status(400).json({
           success: false,
           message: 'La unidad de medida del producto es requerida'
-        });
-      }
-
-      if (unidad_medida.length > 20) {
-        return res.status(400).json({
-          success: false,
-          message: 'La unidad de medida no puede exceder 20 caracteres'
         });
       }
 
@@ -185,6 +186,19 @@ export class ProductoController {
         });
       }
 
+      // Validar que la unidad de medida existe
+      const [unidadRows] = await pool.execute<RowDataPacket[]>(
+        'SELECT id FROM unidades_medida WHERE id = ? AND activo = 1',
+        [unidad_medida_id]
+      );
+
+      if (unidadRows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'La unidad de medida especificada no existe o está inactiva'
+        });
+      }
+
       // Verificar si el producto ya existe
       const existingProduct = await ProductoService.getProductByNombre(nombre.trim());
       if (existingProduct) {
@@ -198,7 +212,7 @@ export class ProductoController {
         nombre: nombre.trim(),
         descripcion: descripcion?.trim() || '',
         categoria_id: categoria_id,
-        unidad_medida: unidad_medida.trim(),
+        unidad_medida_id: unidad_medida_id,
         stock_actual: stock_actual !== undefined ? stock_actual : 0,
         stock_minimo: stock_minimo !== undefined ? stock_minimo : 0,
         precio_referencia: precio_referencia !== undefined ? precio_referencia : 0,
@@ -229,7 +243,7 @@ export class ProductoController {
         nombre,
         descripcion,
         categoria_id,
-        unidad_medida,
+        unidad_medida_id,
         stock_actual,
         stock_minimo,
         precio_referencia,
@@ -278,23 +292,6 @@ export class ProductoController {
         }
       }
 
-      // Validar unidad de medida si se está actualizando
-      if (unidad_medida !== undefined) {
-        if (unidad_medida.trim().length === 0) {
-          return res.status(400).json({
-            success: false,
-            message: 'La unidad de medida del producto no puede estar vacía'
-          });
-        }
-
-        if (unidad_medida.length > 20) {
-          return res.status(400).json({
-            success: false,
-            message: 'La unidad de medida no puede exceder 20 caracteres'
-          });
-        }
-      }
-
       // Validar categoría si se está actualizando
       if (categoria_id !== undefined) {
         const [categoriaRows] = await pool.execute<RowDataPacket[]>(
@@ -310,11 +307,26 @@ export class ProductoController {
         }
       }
 
+      // Validar unidad de medida si se está actualizando
+      if (unidad_medida_id !== undefined) {
+        const [unidadRows] = await pool.execute<RowDataPacket[]>(
+          'SELECT id FROM unidades_medida WHERE id = ? AND activo = 1',
+          [unidad_medida_id]
+        );
+
+        if (unidadRows.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'La unidad de medida especificada no existe o está inactiva'
+          });
+        }
+      }
+
       const productData: ProductoUpdateDTO = {};
       if (nombre !== undefined) productData.nombre = nombre.trim();
       if (descripcion !== undefined) productData.descripcion = descripcion.trim() || '';
       if (categoria_id !== undefined) productData.categoria_id = categoria_id;
-      if (unidad_medida !== undefined) productData.unidad_medida = unidad_medida.trim();
+      if (unidad_medida_id !== undefined) productData.unidad_medida_id = unidad_medida_id;
       if (stock_actual !== undefined) productData.stock_actual = stock_actual;
       if (stock_minimo !== undefined) productData.stock_minimo = stock_minimo;
       if (precio_referencia !== undefined) productData.precio_referencia = precio_referencia;

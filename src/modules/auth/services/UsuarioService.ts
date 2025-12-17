@@ -99,6 +99,7 @@ export class UsuarioService {
       await pool.execute(query, [userId]);
     } catch (error) {
       console.error('Error al actualizar último acceso:', error);
+      // No lanzamos error aquí para no interrumpir el flujo de login
     }
   }
 
@@ -156,15 +157,12 @@ export class UsuarioService {
         return null;
       }
 
-      fields.push('fecha_actualizacion = NOW()');
-      values.push(targetUserId);
-
       const query = `UPDATE usuarios SET ${fields.join(', ')} WHERE id = ?`;
 
       // Logging de la query para debugging (sin valores sensibles)
       console.log(`[UPDATE] Ejecutando update para usuario ID: ${targetUserId}, campos: ${fields.join(', ')}`);
 
-      await pool.execute(query, values);
+      await pool.execute(query, [...values, targetUserId]);
 
       const updatedUser = await this.findById(targetUserId);
 
@@ -226,7 +224,7 @@ export class UsuarioService {
         throw new Error('El usuario ya está desactivado');
       }
 
-      const query = 'UPDATE usuarios SET activo = false, fecha_actualizacion = NOW() WHERE id = ?';
+      const query = 'UPDATE usuarios SET activo = false WHERE id = ?';
       await pool.execute(query, [userId]);
 
       // Retornar el usuario actualizado
@@ -237,14 +235,9 @@ export class UsuarioService {
     }
   }
 
-  async listUsers(requestingUserId: number, page: number = 1, limit: number = 10, activeFilter?: boolean):
+  async listUsers(page: number = 1, limit: number = 10, activeFilter?: boolean):
     Promise<{ users: UsuarioSeguro[]; total: number; page: number; totalPages: number; }> {
     try {
-      // Verificar que el usuario que hace la petición sea administrador
-      const requestingUser = await this.findById(requestingUserId);
-      if (!requestingUser || requestingUser.rol_id !== 1) {
-        throw new Error('No tienes permisos para realizar esta acción');
-      }
 
       // Calcular offset para paginación
       const offset = (page - 1) * limit;
@@ -296,7 +289,7 @@ export class UsuarioService {
 
   async updatePassword(userId: number, newPasswordHash: string): Promise<void> {
     try {
-      const query = 'UPDATE usuarios SET password_hash = ?, fecha_actualizacion = NOW() WHERE id = ?';
+      const query = 'UPDATE usuarios SET password_hash = ? WHERE id = ?';
       await pool.execute(query, [newPasswordHash, userId]);
 
       console.log(`[AUDIT] Contraseña actualizada para usuario ID: ${userId}`);

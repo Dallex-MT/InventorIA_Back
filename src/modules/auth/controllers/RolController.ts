@@ -43,7 +43,24 @@ export class RolController {
       return res.status(500).json({
         success: false,
         message: 'Error al obtener roles',
-        error: process.env['NODE_ENV'] === 'development' ? (error as Error).message : undefined
+      });
+    }
+  }
+
+  static async getAllPermisos(_req: Request, res: Response): Promise<Response> {
+    try {
+      const permisos = await RolService.getAllPermisos();
+
+      return res.json({
+        success: true,
+        data: permisos,
+        message: 'Permisos obtenidos exitosamente'
+      });
+    } catch (error) {
+      console.error('Error al obtener permisos:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Error al obtener permisos',
       });
     }
   }
@@ -78,14 +95,13 @@ export class RolController {
       return res.status(500).json({
         success: false,
         message: 'Error al obtener rol',
-        error: process.env['NODE_ENV'] === 'development' ? (error as Error).message : undefined
       });
     }
   }
 
   static async createRole(req: AuthenticatedRequest, res: Response): Promise<Response> {
     try {
-      const { nombre, descripcion, activo }: RolCreateDTO = req.body;
+      const { nombre, descripcion, activo, permisos_ids }: RolCreateDTO = req.body;
 
       // Validación básica
       if (!nombre || nombre.trim().length === 0) {
@@ -102,6 +118,25 @@ export class RolController {
         });
       }
 
+      // Validar que permisos_ids sea un array si se proporciona
+      if (permisos_ids !== undefined && !Array.isArray(permisos_ids)) {
+        return res.status(400).json({
+          success: false,
+          message: 'permisos_ids debe ser un array de números'
+        });
+      }
+
+      // Validar que todos los elementos del array sean números válidos
+      if (permisos_ids && permisos_ids.length > 0) {
+        const invalidPermisos = permisos_ids.filter(id => !Number.isInteger(id) || id <= 0);
+        if (invalidPermisos.length > 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Todos los IDs de permisos deben ser números enteros positivos'
+          });
+        }
+      }
+
       // Verificar si el rol ya existe
       const existingRole = await RolService.getRoleByNombre(nombre.trim());
       if (existingRole) {
@@ -114,7 +149,8 @@ export class RolController {
       const roleData: RolCreateDTO = {
         nombre: nombre.trim(),
         descripcion: descripcion?.trim() || '',
-        activo: activo !== undefined ? activo : true
+        activo: activo !== undefined ? activo : true,
+        permisos_ids: permisos_ids || []
       };
 
       const newRole = await RolService.createRole(roleData);
@@ -126,10 +162,19 @@ export class RolController {
       });
     } catch (error) {
       console.error('Error al crear rol:', error);
+      
+      let errorMessage = 'Error al crear rol';
+      if (error instanceof Error) {
+        if (error.message.includes('Algunos permisos no existen')) {
+          errorMessage = error.message;
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       return res.status(500).json({
         success: false,
-        message: 'Error al crear rol',
-        error: process.env['NODE_ENV'] === 'development' ? (error as Error).message : undefined
+        message: errorMessage,
       });
     }
   }
@@ -137,7 +182,7 @@ export class RolController {
   static async updateRole(req: AuthenticatedRequest, res: Response): Promise<Response> {
     try {
       const id = parseInt(req.params['id'] as string);
-      const { nombre, descripcion, activo }: RolUpdateDTO = req.body;
+      const { nombre, descripcion, activo, permisos_ids }: RolUpdateDTO = req.body;
 
       if (isNaN(id)) {
         return res.status(400).json({
@@ -181,10 +226,28 @@ export class RolController {
         }
       }
 
+      // Validación de permisos_ids
+      if (permisos_ids !== undefined && !Array.isArray(permisos_ids)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Los permisos debe ser un array de números'
+        });
+      }
+      if (permisos_ids && permisos_ids.length > 0) {
+        const invalidPermisos = permisos_ids.filter(id => !Number.isInteger(id) || id <= 0);
+        if (invalidPermisos.length > 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Todos los IDs de permisos deben ser números enteros positivos'
+          });
+        }
+      }
+
       const roleData: RolUpdateDTO = {};
       if (nombre !== undefined) roleData.nombre = nombre.trim();
       if (descripcion !== undefined) roleData.descripcion = descripcion.trim() || '';
       if (activo !== undefined) roleData.activo = activo;
+      if (permisos_ids !== undefined) roleData.permisos_ids = permisos_ids;
 
       const updatedRole = await RolService.updateRole(id, roleData);
 
@@ -195,10 +258,17 @@ export class RolController {
       });
     } catch (error) {
       console.error('Error al actualizar rol:', error);
+      let errorMessage = 'Error al actualizar rol';
+      if (error instanceof Error) {
+        if (error.message.includes('Algunos permisos no existen')) {
+          errorMessage = error.message;
+        } else {
+          errorMessage = error.message;
+        }
+      }
       return res.status(500).json({
         success: false,
-        message: 'Error al actualizar rol',
-        error: process.env['NODE_ENV'] === 'development' ? (error as Error).message : undefined
+        message: errorMessage,
       });
     }
   }
@@ -254,7 +324,6 @@ export class RolController {
       return res.status(500).json({
         success: false,
         message: 'Error al eliminar rol',
-        error: process.env['NODE_ENV'] === 'development' ? (error as Error).message : undefined
       });
     }
   }
@@ -275,7 +344,6 @@ export class RolController {
       return res.status(500).json({
         success: false,
         message: 'Error al obtener estadísticas de roles',
-        error: process.env['NODE_ENV'] === 'development' ? (error as Error).message : undefined
       });
     }
   }

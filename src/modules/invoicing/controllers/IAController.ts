@@ -1,8 +1,11 @@
 import { Request, Response } from 'express';
-import { ImageProcessingService } from '../services/ImageProcessingService';
+import { ImageProcessingService } from '../services/IAService';
+import { ProductoEnrichmentService } from '../services/ProductoEnrichmentService';
+import { FacturaInternaService } from '../services/FacturaInternaService';
+import { logAppEvent } from '../../../shared/utils/logger';
 import { FacturaProcesadaResponse } from '../models/FacturaProcesada';
 
-export class ImageController {
+export class IAController {
   /**
    * Procesa una imagen de factura y extrae la información estructurada
    */
@@ -49,6 +52,24 @@ export class ImageController {
       // Procesar la imagen con Ollama
       const facturaData = await ImageProcessingService.processInvoiceImage(tempFilePath);
 
+      const processedCodigo = facturaData.codigo_interno.replace(/[-_]/g, '');
+      const exists = await FacturaInternaService.existsCodigoInternoCaseSensitive(processedCodigo);
+      if (exists) {
+        logAppEvent('warn', 'Código interno existente', { codigo_interno: processedCodigo });
+        if (tempFilePath) {
+          await ImageProcessingService.deleteTemporaryFile(tempFilePath);
+          tempFilePath = null;
+        }
+        return res.status(409).json({
+          success: false,
+          message: 'El registro ya existe'
+        } as FacturaProcesadaResponse);
+      }
+      logAppEvent('info', 'Código interno nuevo', { codigo_interno: processedCodigo });
+      facturaData.codigo_interno = processedCodigo;
+
+      const enrichedData = await ProductoEnrichmentService.enrichFactura(facturaData);
+
       // Eliminar archivo temporal después del procesamiento exitoso
       await ImageProcessingService.deleteTemporaryFile(tempFilePath);
       tempFilePath = null;
@@ -56,7 +77,7 @@ export class ImageController {
       // Retornar respuesta exitosa
       return res.json({
         success: true,
-        data: facturaData,
+        data: enrichedData,
         message: 'Factura procesada exitosamente'
       } as FacturaProcesadaResponse);
 

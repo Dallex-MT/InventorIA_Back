@@ -39,6 +39,7 @@ export interface AuthResponse {
   success: boolean;
   message: string;
   user?: UsuarioSeguro;
+  permissions?: number[];
   metadata?: {
     updatedBy?: number;
     updatedUser?: number;

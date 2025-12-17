@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
 import { UsuarioService } from '../services/UsuarioService';
+import { RolService } from '../services/RolService';
 import { UsuarioRegistroDTO, AuthResponse, JWTPayload } from '../models/Usuario';
-import { generateToken, setTokenCookie, clearTokenCookie } from '../../../shared/utils/jwt';
+import { generateToken, setTokenCookie, clearTokenCookie, verifyToken } from '../../../shared/utils/jwt';
+import { EmailService } from '../../../shared/services/EmailService';
 
 import { invalidateUserSessions } from '../../../shared/utils/tokenBlacklist';
 import {
@@ -14,9 +16,11 @@ import { comparePassword, hashPassword } from '../../../shared/utils/password';
 
 export class AuthController {
   private usuarioService: UsuarioService;
+  private emailService: EmailService;
 
   constructor() {
     this.usuarioService = new UsuarioService();
+    this.emailService = new EmailService();
   }
 
   async register(req: Request, res: Response): Promise<void> {
@@ -83,15 +87,6 @@ export class AuthController {
       const newUser = await this.usuarioService.create(usuarioData);
       const safeUser = this.usuarioService.toSafeUser(newUser);
 
-      const tokenPayload: JWTPayload = {
-        userId: newUser.id,
-        cedula: newUser.cedula,
-        nombre_usuario: newUser.nombre_usuario,
-        rol_id: newUser.rol_id
-      };
-
-      const token = generateToken(tokenPayload);
-      setTokenCookie(res, token);
 
       const response: AuthResponse = {
         success: true,
@@ -164,6 +159,10 @@ export class AuthController {
 
       await this.usuarioService.updateLastAccess(user.id);
 
+      // Fetch user role permissions
+      const userRole = await RolService.getRoleById(user.rol_id);
+      const permissions = userRole?.permisos?.map(permiso => permiso.id) || [];
+
       const tokenPayload: JWTPayload = {
         userId: user.id,
         cedula: user.cedula,
@@ -178,7 +177,8 @@ export class AuthController {
       const response: AuthResponse = {
         success: true,
         message: 'Inicio de sesión exitoso',
-        user: safeUser
+        user: safeUser,
+        permissions: permissions
       };
 
       res.status(200).json(response);
@@ -585,7 +585,6 @@ export class AuthController {
       }
 
       const result = await this.usuarioService.listUsers(
-        user.userId,
         pageNum,
         limitNum,
         activeFilter
@@ -605,6 +604,76 @@ export class AuthController {
         message: error instanceof Error ? error.message : 'Error al listar usuarios'
       };
       res.status(500).json(response);
+    }
+  }
+
+  async requestPasswordReset(req: Request, res: Response): Promise<void> {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        res.status(400).json({ success: false, message: 'El correo electrónico es requerido' });
+        return;
+      }
+
+      const user = await this.usuarioService.findByEmail(email);
+      if (!user) {
+        // Security: Don't reveal if user exists
+        res.status(200).json({ success: true, message: 'Si el correo existe, recibirás instrucciones.' });
+        return;
+      }
+
+      // Generate token valid for 10 minutes
+      const payload: JWTPayload = {
+          userId: user.id,
+          cedula: user.cedula,
+          nombre_usuario: user.nombre_usuario,
+          rol_id: user.rol_id
+      };
+      const token = generateToken(payload, '10m');
+
+      // Send email
+      await this.emailService.sendPasswordResetEmail(email, token);
+
+      console.log(`[RESET] Solicitud de cambio de contraseña para ${email}`);
+      res.status(200).json({ success: true, message: 'Si el correo existe, recibirás instrucciones.' });
+
+    } catch (error) {
+      console.error('Error en requestPasswordReset:', error);
+      res.status(500).json({ success: false, message: 'Error al procesar la solicitud' });
+    }
+  }
+
+  async resetPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { token, newPassword } = req.body;
+
+      if (!token || !newPassword) {
+        res.status(400).json({ success: false, message: 'Token y nueva contraseña son requeridos' });
+        return;
+      }
+
+      let decoded;
+      try {
+        decoded = verifyToken(token);
+      } catch (error) {
+        res.status(400).json({ success: false, message: 'Token inválido o expirado' });
+        return;
+      }
+
+      const userId = decoded.userId;
+      
+      // Hash new password
+      const passwordHash = await hashPassword(newPassword);
+
+      // Update password
+      await this.usuarioService.updatePassword(userId, passwordHash);
+
+      console.log(`[RESET] Contraseña actualizada para usuario ID ${userId}`);
+      res.status(200).json({ success: true, message: 'Contraseña actualizada exitosamente' });
+
+    } catch (error) {
+      console.error('Error en resetPassword:', error);
+      res.status(500).json({ success: false, message: 'Error al actualizar la contraseña' });
     }
   }
 }

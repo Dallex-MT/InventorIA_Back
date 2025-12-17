@@ -11,7 +11,7 @@ export class ProductoService {
     limit: number = 10,
     activeFilter?: boolean,
     categoriaId?: number,
-    unidadMedida?: string,
+    unidadMedidaId?: number,
     searchText?: string
   ): Promise<{ products: Producto[]; total: number; page: number; totalPages: number; }> {
     try {
@@ -24,25 +24,25 @@ export class ProductoService {
 
       // Filtro por estado activo
       if (activeFilter !== undefined) {
-        conditions.push('activo = ?');
+        conditions.push('p.activo = ?');
         queryParams.push(activeFilter);
       }
 
       // Filtro por categoría
       if (categoriaId !== undefined) {
-        conditions.push('categoria_id = ?');
+        conditions.push('p.categoria_id = ?');
         queryParams.push(categoriaId);
       }
 
       // Filtro por unidad de medida
-      if (unidadMedida !== undefined && unidadMedida.trim() !== '') {
-        conditions.push('unidad_medida = ?');
-        queryParams.push(unidadMedida);
+      if (unidadMedidaId !== undefined) {
+        conditions.push('p.unidad_medida_id = ?');
+        queryParams.push(unidadMedidaId);
       }
 
       // Filtro de búsqueda por texto (nombre y descripción)
       if (searchText !== undefined && searchText.trim() !== '') {
-        conditions.push('(LOWER(nombre) LIKE LOWER(?) OR LOWER(descripcion) LIKE LOWER(?))');
+        conditions.push('(LOWER(p.nombre) LIKE LOWER(?) OR LOWER(p.descripcion) LIKE LOWER(?))');
         const searchPattern = `%${searchText.trim()}%`;
         queryParams.push(searchPattern, searchPattern);
       }
@@ -54,7 +54,7 @@ export class ProductoService {
       }
 
       // Query para obtener el total de registros
-      const countQuery = `SELECT COUNT(*) as total FROM productos ${whereClause}`;
+      const countQuery = `SELECT COUNT(*) as total FROM productos p ${whereClause}`;
 
       // Asegurarnos de que los parámetros del count sean del tipo correcto
       const countParams = queryParams.map(param => param === 'true' ? 1 : (param === 'false' ? 0 : param));
@@ -64,14 +64,31 @@ export class ProductoService {
       // Query para obtener los productos con paginación
       // MySQL requiere que LIMIT y OFFSET sean valores literales, no parámetros preparados
       const productsQuery = `
-        SELECT * FROM productos 
+        SELECT p.*, 
+               um.id as um_id, um.nombre as um_nombre, um.abreviatura as um_abreviatura, um.activo as um_activo
+        FROM productos p
+        INNER JOIN unidades_medida um ON p.unidad_medida_id = um.id
         ${whereClause}
-        ORDER BY nombre ASC 
+        ORDER BY p.nombre ASC 
         LIMIT ${parseInt(limit.toString())} OFFSET ${parseInt(offset.toString())}
       `;
 
       const [rows] = await pool.execute<RowDataPacket[]>(productsQuery, queryParams);
-      const products = rows as Producto[];
+
+      const products = rows.map((row: any) => {
+        const product = { ...row } as Producto;
+        product.unidad_medida = {
+          id: row.um_id,
+          nombre: row.um_nombre,
+          abreviatura: row.um_abreviatura,
+          descripcion: null, // No necesitamos traer todo
+          activo: row.um_activo,
+          fecha_creacion: new Date(), // Placeholder
+          fecha_actualizacion: new Date() // Placeholder
+        };
+        // Limpiar campos extra del join plano si es necesario, aunque TS lo ignorará si no está en la interfaz
+        return product;
+      });
 
       const totalPages = Math.ceil(total / limit);
 
@@ -89,7 +106,11 @@ export class ProductoService {
 
   static async getProductById(id: number): Promise<Producto | null> {
     const [rows] = await pool.execute<RowDataPacket[]>(
-      'SELECT * FROM productos WHERE id = ?',
+      `SELECT p.*, 
+              um.id as um_id, um.nombre as um_nombre, um.abreviatura as um_abreviatura, um.activo as um_activo
+       FROM productos p
+       INNER JOIN unidades_medida um ON p.unidad_medida_id = um.id
+       WHERE p.id = ?`,
       [id]
     );
 
@@ -97,12 +118,28 @@ export class ProductoService {
       return null;
     }
 
-    return rows[0] as Producto;
+    const row = rows[0] as any;
+    const product = { ...row } as Producto;
+    product.unidad_medida = {
+      id: row.um_id,
+      nombre: row.um_nombre,
+      abreviatura: row.um_abreviatura,
+      descripcion: null,
+      activo: row.um_activo,
+      fecha_creacion: new Date(),
+      fecha_actualizacion: new Date()
+    };
+
+    return product;
   }
 
   static async getProductByNombre(nombre: string): Promise<Producto | null> {
     const [rows] = await pool.execute<RowDataPacket[]>(
-      'SELECT * FROM productos WHERE nombre = ?',
+      `SELECT p.*, 
+              um.id as um_id, um.nombre as um_nombre, um.abreviatura as um_abreviatura, um.activo as um_activo
+       FROM productos p
+       INNER JOIN unidades_medida um ON p.unidad_medida_id = um.id
+       WHERE p.nombre = ?`,
       [nombre]
     );
 
@@ -110,16 +147,45 @@ export class ProductoService {
       return null;
     }
 
-    return rows[0] as Producto;
+    const row = rows[0] as any;
+    const product = { ...row } as Producto;
+    product.unidad_medida = {
+      id: row.um_id,
+      nombre: row.um_nombre,
+      abreviatura: row.um_abreviatura,
+      descripcion: null,
+      activo: row.um_activo,
+      fecha_creacion: new Date(),
+      fecha_actualizacion: new Date()
+    };
+
+    return product;
   }
 
   static async getProductsByCategoria(categoriaId: number): Promise<Producto[]> {
     const [rows] = await pool.execute<RowDataPacket[]>(
-      'SELECT * FROM productos WHERE categoria_id = ? AND activo = 1 ORDER BY nombre',
+      `SELECT p.*, 
+              um.id as um_id, um.nombre as um_nombre, um.abreviatura as um_abreviatura, um.activo as um_activo
+       FROM productos p
+       INNER JOIN unidades_medida um ON p.unidad_medida_id = um.id
+       WHERE p.categoria_id = ? AND p.activo = 1 
+       ORDER BY p.nombre`,
       [categoriaId]
     );
 
-    return rows as Producto[];
+    return rows.map((row: any) => {
+      const product = { ...row } as Producto;
+      product.unidad_medida = {
+        id: row.um_id,
+        nombre: row.um_nombre,
+        abreviatura: row.um_abreviatura,
+        descripcion: null,
+        activo: row.um_activo,
+        fecha_creacion: new Date(),
+        fecha_actualizacion: new Date()
+      };
+      return product;
+    });
   }
 
   static async createProduct(productData: ProductoCreateDTO): Promise<Producto> {
@@ -127,7 +193,7 @@ export class ProductoService {
       nombre,
       descripcion,
       categoria_id,
-      unidad_medida,
+      unidad_medida_id,
       stock_actual = 0,
       stock_minimo = 0,
       precio_referencia = 0,
@@ -135,8 +201,8 @@ export class ProductoService {
     } = productData;
 
     const [result] = await pool.execute<ResultSetHeader>(
-      'INSERT INTO productos (nombre, descripcion, categoria_id, unidad_medida, stock_actual, stock_minimo, precio_referencia, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [nombre, descripcion || null, categoria_id, unidad_medida, stock_actual, stock_minimo, precio_referencia, activo]
+      'INSERT INTO productos (nombre, descripcion, categoria_id, unidad_medida_id, stock_actual, stock_minimo, precio_referencia, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [nombre, descripcion || null, categoria_id, unidad_medida_id, stock_actual, stock_minimo, precio_referencia, activo]
     );
 
     const newProduct = await this.getProductById(result.insertId);
@@ -176,9 +242,9 @@ export class ProductoService {
       values.push(productData.categoria_id);
     }
 
-    if (productData.unidad_medida !== undefined) {
-      fields.push('unidad_medida = ?');
-      values.push(productData.unidad_medida);
+    if (productData.unidad_medida_id !== undefined) {
+      fields.push('unidad_medida_id = ?');
+      values.push(productData.unidad_medida_id);
     }
 
     if (productData.stock_actual !== undefined) {
@@ -208,7 +274,7 @@ export class ProductoService {
     values.push(id);
 
     const [result] = await pool.execute<ResultSetHeader>(
-      `UPDATE productos SET ${fields.join(', ')}, fecha_actualizacion = CURRENT_TIMESTAMP WHERE id = ?`,
+      `UPDATE productos SET ${fields.join(', ')} WHERE id = ?`,
       values
     );
 
@@ -235,7 +301,7 @@ export class ProductoService {
 
   static async deleteProduct(id: number): Promise<boolean> {
     const [result] = await pool.execute<ResultSetHeader>(
-      'UPDATE productos SET activo = 0, fecha_actualizacion = CURRENT_TIMESTAMP WHERE id = ?',
+      'UPDATE productos SET activo = 0 WHERE id = ?',
       [id]
     );
 
@@ -279,5 +345,44 @@ export class ProductoService {
     );
 
     return rows[0]?.['total'] || 0;
+  }
+
+  static async updateStockAndPrice(
+    id: number, 
+    quantityDelta: number, 
+    newPrice?: number,
+    connection?: any // Optional connection for transaction support
+  ): Promise<void> {
+    const conn = connection || pool;
+    
+    // Validar que no quede stock negativo si estamos restando
+    if (quantityDelta < 0) {
+      const [rows] = await conn.execute(
+        'SELECT stock_actual, nombre FROM productos WHERE id = ?',
+        [id]
+      );
+      
+      if (rows.length === 0) throw new Error(`Producto con ID ${id} no encontrado`);
+      
+      const currentStock = parseFloat(rows[0].stock_actual);
+      if (currentStock + quantityDelta < 0) {
+        throw new Error(`Stock insuficiente para el producto "${rows[0].nombre}". Stock actual: ${currentStock}, Intento de resta: ${Math.abs(quantityDelta)}`);
+      }
+    }
+
+    const fields: string[] = ['stock_actual = stock_actual + ?'];
+    const values: any[] = [quantityDelta];
+
+    if (newPrice !== undefined && newPrice > 0) {
+      fields.push('precio_referencia = ?');
+      values.push(newPrice);
+    }
+
+    values.push(id);
+
+    await conn.execute(
+      `UPDATE productos SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
   }
 }
